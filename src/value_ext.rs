@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use clarity::vm::Value;
 
-use crate::{errors::ClarityError, ClarityType, IntegerType};
+use crate::{errors::ClarityError, types::{ClarityType, IntegerType}};
 
 pub trait ValueExtensions {
     fn checked_add(&self, value: Value) -> Result<Value>;

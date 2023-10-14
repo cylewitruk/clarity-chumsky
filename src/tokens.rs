@@ -5,45 +5,16 @@ use logos::{Lexer, Logos};
 use num_bigint::{BigInt, BigUint};
 use regex::Regex;
 
-use crate::{ClarityInteger, IntegerType, RefinedInteger};
+use crate::types::*;
 
 lazy_static! {
     static ref REFINED_INT_REGEX: Regex = Regex::new(
         r"\(int\s+(?P<sign_low>[-+])?(?P<low>[\d]+)\s+(?P<sign_high>[-+])?(?P<high>[\d]+)\)"
     ).unwrap();
-
-    static ref I256_MIN: BigInt = BigInt::parse_bytes(
-        "-57896044618658097711785492504343953926634992332820282019728792003956564819968".as_bytes(),
-        10
-    ).unwrap();
-
-    static ref U256_MAX: BigUint = BigUint::parse_bytes(
-        "115792089237316195423570985008687907853269984665640564039457584007913129639935".as_bytes(),
-        10
-    ).unwrap();
-
-    static ref I256_MAX: BigInt = BigInt::parse_bytes(
-        "57896044618658097711785492504343953926634992332820282019728792003956564819967".as_bytes(),
-        10
-    ).unwrap();
-
-    static ref I512_MIN: BigInt = BigInt::parse_bytes(concat!(
-        r#"-6703903964971298549787012499102923063739682910296196688861780721860882015036773"#,
-        r#"488400937149083451713845015929093243025426876941405973284973216824503042048"#).as_bytes(),
-        10
-    ).unwrap();
-    
-    static ref I512_MAX: BigInt = BigInt::parse_bytes(concat!(
-        r#"670390396497129854978701249910292306373968291029619668886178072186088201503677"#,
-        r#"r#"3488400937149083451713845015929093243025426876941405973284973216824503042047"#).as_bytes(),
-    10).unwrap();
-
-    static ref U512_MAX: BigUint = BigUint::parse_bytes(concat!(
-        r#"13407807929942597099574024998205846127479365820592393377723561443721764030073546"#,
-        r#"976801874298166903427690031858186486050853753882811946569946433649006084095"#).as_bytes(), 
-        10
-    ).unwrap();
 }
+
+
+
 
 fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     let slice = lex.slice();

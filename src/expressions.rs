@@ -1,4 +1,4 @@
-use crate::{value_ext::ValueExtensions, ClarityInteger};
+use crate::{value_ext::ValueExtensions, types::ClarityInteger};
 use anyhow::{bail, Result};
 use clarity::vm::Value;
 

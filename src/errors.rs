@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::ClarityType;
+use crate::types::ClarityType;
 
 #[derive(Error, Debug, Clone, Copy, PartialEq)]
 pub enum ClarityError {

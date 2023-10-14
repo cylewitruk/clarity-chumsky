@@ -10,16 +10,17 @@ use chumsky::span::SimpleSpan;
 use chumsky::Parser;
 use expressions::SExpr;
 use logos::Logos;
-use num_bigint::BigInt;
-use num_bigint::BigUint;
 
 use crate::tokens::Token;
+use crate::source::*;
 
 mod errors;
 mod expressions;
 mod parser;
 mod tokens;
 mod value_ext;
+mod source;
+mod types;
 
 fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
@@ -117,198 +118,3 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ClarityType {
-    Bool,
-    Integer(IntegerType),
-    CallableContract,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum IntegerType {
-    I32,
-    U32,
-    I64,
-    U64,
-    I128,
-    U128,
-    I256,
-    U256,
-    I512,
-    U512,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ClarityInteger {
-    I32(i32),
-    U32(u32),
-    I64(i64),
-    U64(u64),
-    I128(i128),
-    U128(u128),
-    I256(BigInt),
-    U256(BigUint),
-    I512(BigInt),
-    U512(BigUint),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RefinedInteger {
-    pub low_val: ClarityInteger,
-    pub high_val: ClarityInteger
-}
-
-impl RefinedInteger {
-    pub fn new(
-        low_val: ClarityInteger, 
-        high_val: ClarityInteger
-    ) -> Self {
-        Self { low_val, high_val }
-    }
-}
-
-#[allow(dead_code)]
-const SRC: &str = r"
-;; This is a comment
-
-;; I256
-(int -170141183460469231731687303715884105729 100)
-;; U256
-(int 170141183460469231731687303715884105729 100)
-// U512
-(int 0 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047)
-
-(-
-  (* (+ 1 2 3 4 5) 7)
-  (/ 5 3)
-)
-";
-
-#[allow(dead_code)]
-const CONTRACT_SRC: &str = r"
-;; A simple betting game using flip-coin with player matching
-;;
-;; For more details see docs/flip-coin.md
-
-(define-constant default-amount u1000)
-(define-constant new-slot {bet-true: none, bet-false: none, amount: default-amount, created-at: u0})
-(define-constant err-bet-exists u10)
-(define-constant err-flip-failed u11)
-
-;; storage
-(define-map gamblers (tuple (height uint)) (tuple (bet-true principal) (bet-false principal)))
-(define-map amounts (tuple (height uint)) (tuple (amount uint)))
-(define-map matched-bets (tuple (created-at uint)) (tuple (height uint)))
-
-(define-data-var pending-payout (optional uint) none)
-(define-data-var next-slot {bet-true: (optional principal), bet-false: (optional principal),
-  amount: uint, created-at: uint}
-  new-slot)
-
-;; store information about tax office to pay tax on prize immediately
-(use-trait tax-office-trait .flip-coin-tax-office.tax-office-trait)
-
-;; return next slot
-(define-read-only (get-next-slot)
-  (var-get next-slot)
-)
-
-;; returns how much stx were bet at the given block
-(define-read-only (get-amount-at (height uint))
-  (match (map-get? amounts {height: height})
-    amount (get amount amount)
-    u0
-  )
-)
-
-;; returns the winner at the given block. If there was no winner `(none)` is returned
-(define-read-only (get-optional-winner-at (height uint))
-  (match (map-get? gamblers {height: height})
-    game-slot  (let ((value (contract-call? .flip-coin flip-coin-at (+ height u1))))
-                  (if value
-                    (some (get bet-true game-slot))
-                    (some (get bet-false game-slot))
-                ))
-    none
-  )
-)
-
-
-;; splits the prize money
-;; 10% goes to another account
-;; the rest to the winner
-(define-private (shared-amounts (amount uint))
-   (let ((shared (/ (* amount u10) u100)))
-    {winner: (- amount shared),
-    shared: shared,}
-  )
-)
-;; pays the bet amount at the given block
-;; height must be below the current height
-;; 10% goes to the tax office
-(define-private (payout (height (optional uint)))
- (match height
-  some-height (if (<= block-height some-height)
-    true
-    (let ((shared-prize (shared-amounts (get-amount-at some-height))))
-      (begin
-        (unwrap-panic (as-contract (stx-transfer? (get winner shared-prize) tx-sender (unwrap-panic (get-optional-winner-at some-height)))))
-        (unwrap-panic (as-contract (contract-call? .flip-coin-jackpot pay-tax (get shared shared-prize))))
-        (var-set pending-payout none)
-      )
-    ))
-  true
- )
-)
-
-(define-private (next-gambler (value bool))
-  (if value
-        (get bet-true (var-get next-slot))
-        (get bet-false (var-get next-slot))
-  )
-)
-
-(define-data-var trigger (optional uint) none)
-(define-private (panic)
-  (ok {created-at: (unwrap-panic (var-get trigger)), bet-at: u0})
-)
-
-(define-private (update-game-after-payment (values (tuple (bet-true principal) (bet-false principal))) (amount uint))
-  (if (map-insert gamblers {height: block-height}
-                    {
-                      bet-true: (get bet-true values),
-                      bet-false: (get bet-false values)
-                    })
-      (if (map-insert amounts {height: block-height}  {amount: (+ amount amount)})
-          (let ((created-at block-height))
-            (begin
-              (map-insert matched-bets {created-at: created-at} {height: block-height})
-              (var-set next-slot new-slot)
-              (var-set pending-payout (some block-height))
-              (ok {
-                    created-at: created-at,
-                    bet-at: block-height
-                  })
-            )
-          )
-          (panic))
-      (panic)))
-
-;; bet 1000 uSTX on the each value for the given users.
-;; Only one set of users can bet for each block.
-;; if payout needs to be done then this function call will do it (note that the caller
-;; needs to provide corresponding post conditions)
-(define-public (bet (values (tuple (bet-true principal) (bet-false principal))))
-  (let ((amount default-amount))
-    (begin
-      (payout (var-get pending-payout))
-      (if (is-some (next-gambler true))
-        (err err-bet-exists)
-        (begin
-          (match (stx-transfer? (* u2 amount) tx-sender (as-contract tx-sender))
-            success (update-game-after-payment values amount)
-            error (err error)))))))
-
-(define-public (fund-slot (amount uint) (account principal))
-  (stx-transfer? amount tx-sender account)
-)";
