@@ -12,3 +12,4 @@ chumsky = "1.0.0-alpha.6"
 clap = { version = "4.4.6", features = ["derive"] }
 clarity = { path = "../../stacks-network/stacks-blockchain/clarity" }
 logos = "0.13.0"
+thiserror = "1.0.49"

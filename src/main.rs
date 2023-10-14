@@ -16,6 +16,7 @@ mod expressions;
 mod parser;
 mod tokens;
 mod value_ext;
+mod errors;
 
 fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
@@ -62,8 +63,8 @@ fn main() -> Result<()> {
 
     let now = Instant::now();
     match sexpr.eval() {
-        Ok(out) => println!("Result = {}, time = {:?}", out, Instant::now().duration_since(now)),
-        Err(err) => println!("Runtime error: {}", err),
+        Ok(out) => println!("eval result = {}, time = {:?}", out, Instant::now().duration_since(now)),
+        Err(err) => println!("eval runtime error: {}", err),
     }
     let elapsed = Instant::now().duration_since(now);
     println!("eval elapsed: {:?}", elapsed);
@@ -109,11 +110,30 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ClarityType {
+    Bool,
+    Integer(IntegerType),
+    CallableContract
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum IntegerType {
+    U128,
+    I128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ClarityInteger {
+    U128(u128),
+    I128(i128),
+}
+
 #[allow(dead_code)]
 const SRC: &str = r"
 ;; This is a comment
     (-
-        (* (+ 1 2 3 4 5) 7)
+        (* (+ 1 u2 3 4 5) 7)
         (/ 5 3)
     )
 ";

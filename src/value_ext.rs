@@ -1,11 +1,17 @@
-use clarity::vm::Value;
-use anyhow::{Result, bail};
+use clarity::vm::{Value, types::TypeSignature, types::signatures::CallableSubtype};
+use anyhow::{Result, bail, anyhow};
+
+use crate::{errors::ClarityError, IntegerType, ClarityType};
+
+
 
 pub trait ValueExtensions {
     fn checked_add(&self, value: Value) -> Result<Value>;
     fn checked_sub(&self, value: Value) -> Result<Value>;
     fn checked_div(&self, value: Value) -> Result<Value>;
     fn checked_mul(&self, value: Value) -> Result<Value>;
+
+    fn ty(&self) -> ClarityType;
 }
 
 impl ValueExtensions for Value {
@@ -15,14 +21,14 @@ impl ValueExtensions for Value {
                 if let Value::Int(i2) = value {
                     Ok(Value::Int(i.checked_add(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             Value::UInt(i) => {
                 if let Value::UInt(i2) = value {
                     Ok(Value::UInt(i.checked_add(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             }
             _ => bail!("unsupported type")
@@ -35,14 +41,14 @@ impl ValueExtensions for Value {
                 if let Value::Int(i2) = value {
                     Ok(Value::Int(i.checked_sub(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             Value::UInt(i) => {
                 if let Value::UInt(i2) = value {
                     Ok(Value::UInt(i.checked_sub(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             _ => bail!("unsupported type")
@@ -55,14 +61,14 @@ impl ValueExtensions for Value {
                 if let Value::Int(i2) = value {
                     Ok(Value::Int(i.checked_div(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             Value::UInt(i) => {
                 if let Value::UInt(i2) = value {
                     Ok(Value::UInt(i.checked_div(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             _ => bail!("unsupported type")
@@ -75,17 +81,27 @@ impl ValueExtensions for Value {
                 if let Value::Int(i2) = value {
                     Ok(Value::Int(i.checked_mul(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             Value::UInt(i) => {
                 if let Value::UInt(i2) = value {
                     Ok(Value::UInt(i.checked_mul(i2).unwrap()))
                 } else {
-                    bail!("type mismatch")
+                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
                 }
             },
             _ => bail!("unsupported type")
+        }
+    }
+
+    fn ty(&self) -> ClarityType {
+        match self {
+            Value::Bool(_) => ClarityType::Bool,
+            Value::CallableContract(_) => ClarityType::CallableContract,
+            Value::Int(_) => ClarityType::Integer(IntegerType::I128),
+            Value::UInt(_) => ClarityType::Integer(IntegerType::U128),
+            _ => todo!()
         }
     }
 }

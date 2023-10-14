@@ -2,21 +2,17 @@ use std::fmt;
 
 use logos::{Lexer, Logos};
 
-fn parse_int(lex: &mut Lexer<Token>) -> IntegerType {
+use crate::{IntegerType, ClarityInteger};
+
+fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     let slice = lex.slice();
     if slice.starts_with('u') {
         let uint: u128 = slice[1..].parse().unwrap();
-        IntegerType::U128(uint)
+        ClarityInteger::U128(uint)
     } else {
         let int: i128 = slice.parse().unwrap();
-        IntegerType::I128(int)
+        ClarityInteger::I128(int)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum IntegerType {
-    U128(u128),
-    I128(i128),
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -40,7 +36,7 @@ pub enum Token {
     #[token("int")]
     TypeInt,
     #[regex("u?[0-9]+", priority = 2, callback = parse_int )]
-    LiteralInteger(IntegerType),
+    LiteralInteger(ClarityInteger),
     #[regex("0b[01]+")]
     LiteralBinary,
     #[regex("0x[0-9a-fA-F]+")]

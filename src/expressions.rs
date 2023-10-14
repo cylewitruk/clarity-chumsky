@@ -1,11 +1,11 @@
 use clarity::vm::Value;
 
-use crate::{tokens::IntegerType, value_ext::ValueExtensions};
+use crate::{IntegerType, value_ext::ValueExtensions, ClarityInteger};
 use anyhow::{anyhow, bail, Result};
 
 #[derive(Debug)]
 pub enum SExpr {
-    LiteralInteger(IntegerType),
+    LiteralInteger(ClarityInteger),
     List(Vec<Self>),
 
     // Operators
@@ -20,10 +20,11 @@ impl SExpr {
     pub fn eval(&self) -> Result<Value> {
         match self {
             SExpr::LiteralInteger(ty) => match ty {
-                IntegerType::I128(i) => Ok(Value::Int(*i)),
-                IntegerType::U128(i) => Ok(Value::UInt(*i)),
+                ClarityInteger::I128(i) => Ok(Value::Int(*i)),
+                ClarityInteger::U128(i) => Ok(Value::UInt(*i)),
             },
             SExpr::List(list) => match &list[..] {
+                // ADD
                 [SExpr::Add, tail @ ..] => {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
@@ -34,6 +35,7 @@ impl SExpr {
                         }
                     )
                 }
+                // SUBTRACT
                 [SExpr::Sub, tail @ ..] => {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
@@ -44,6 +46,7 @@ impl SExpr {
                         }
                     )
                 }
+                // MULTIPLY
                 [SExpr::Mul, tail @ ..] => {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
@@ -55,6 +58,7 @@ impl SExpr {
                         }
                     )
                 }
+                // DIVIDE
                 [SExpr::Div, tail @ ..] => {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
