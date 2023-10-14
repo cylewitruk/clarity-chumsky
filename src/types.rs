@@ -51,16 +51,8 @@ pub enum ClarityType {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntegerType {
-    I32,
-    U32,
-    I64,
-    U64,
     I128,
     U128,
-    I256,
-    U256,
-    I512,
-    U512,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +69,7 @@ pub enum ClarityInteger {
     U512(BigUint),
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum TryFromClarityIntError {
     FromInt(TryFromIntError),
     FromBigInt(TryFromBigIntError<BigInt>),
@@ -84,6 +77,7 @@ pub enum TryFromClarityIntError {
     FromBigInt2(TryFromBigIntError<()>)
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum TryIntoClarityIntError {
     BigIntOutOfRange(BigInt),
     BigUIntOutOfRange(BigUint),
@@ -143,6 +137,22 @@ impl Into<ClarityInteger> for u128 {
     }
 }
 
+impl TryInto<ClarityInteger> for &str {
+    type Error = TryIntoClarityIntError;
+
+    fn try_into(self) -> Result<ClarityInteger, Self::Error> {
+        if self.chars().nth(0) == Some('-') {
+            let bint = BigInt::parse_bytes(self.as_bytes(), 10);
+            let result: ClarityInteger = bint.try_into()?;
+            return Ok(result);
+        } else {
+            let bint = BigUint::parse_bytes(self.as_bytes(), 10);
+            let result: ClarityInteger = bint.try_into()?;
+            return Ok(result);
+        }
+    }
+}
+
 impl TryInto<ClarityInteger> for BigInt {
     type Error = TryIntoClarityIntError;
 
@@ -166,6 +176,29 @@ impl TryInto<ClarityInteger> for BigInt {
     }
 }
 
+impl TryInto<ClarityInteger> for Option<BigUint> {
+    type Error = TryIntoClarityIntError;
+
+    fn try_into(self) -> Result<ClarityInteger, Self::Error> {
+        if let Some(val) = self {
+            let x: ClarityInteger = val.try_into()?;
+            return Ok(x);
+        }
+        return Err(TryIntoClarityIntError::UIntCannotBeLessThanZero);
+    }
+}
+
+impl TryInto<ClarityInteger> for Option<BigInt> {
+    type Error = TryIntoClarityIntError;
+
+    fn try_into(self) -> Result<ClarityInteger, Self::Error> {
+        if let Some(val) = self {
+            let x: ClarityInteger = val.try_into()?;
+            return Ok(x);
+        }
+        return Err(TryIntoClarityIntError::UIntCannotBeLessThanZero);
+    }
+}
 
 impl TryInto<ClarityInteger> for BigUint {
     type Error = TryIntoClarityIntError;

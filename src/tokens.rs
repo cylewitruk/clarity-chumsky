@@ -13,9 +13,6 @@ lazy_static! {
     ).unwrap();
 }
 
-
-
-
 fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     let slice = lex.slice();
     if let Some(stripped) = slice.strip_prefix('u') {
@@ -28,103 +25,23 @@ fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
 }
 
 fn parse_refined_int(lex: &mut Lexer<Token>) -> RefinedInteger {
+
     let slice = lex.slice();
-    let caps = REFINED_INT_REGEX.captures(slice).unwrap();
 
-    let low = &caps["low"];
-    let high = &caps["high"];
-
-    let is_low_negative = caps.name("sign_low").map_or(false, |f| f.as_str().eq("-"));
-    let is_high_negative = caps.name("sign_high").map_or(false, |f| f.as_str().eq("-"));
-
-    eprintln!("parse_refined_int: {slice}, is_low_negative: {:?}, low: {}, is_high_negative: {:?}, high: {:?}",
-        is_low_negative, &caps["low"], is_high_negative, &caps["high"]);
-
-    let low_val: ClarityInteger;
-    let high_val: ClarityInteger;
-    
-
-    if is_low_negative {
-        let low = BigInt::parse_bytes(low.as_bytes(), 10).unwrap() * -1;
-        low_val = match get_refined_integer_type_signed(&low) {
-            IntegerType::I32 => ClarityInteger::I32(low.try_into().unwrap()),
-            IntegerType::I64 => ClarityInteger::I64(low.try_into().unwrap()),
-            IntegerType::I128 => ClarityInteger::I128(low.try_into().unwrap()),
-            IntegerType::I256 => ClarityInteger::I256(low),
-            IntegerType::I512 => ClarityInteger::I512(low),
-            _ => panic!("signed integers larger than 512 bits are not currently supported"),
-        };
-        eprintln!("LOW SIG: {low_val:?}");
-    } else {
-        let low = BigUint::parse_bytes(low.as_bytes(), 10).unwrap();
-        low_val = match get_refined_integer_type_unsigned(&low) {
-            IntegerType::U32 => ClarityInteger::U32(low.try_into().unwrap()),
-            IntegerType::U64 => ClarityInteger::U64(low.try_into().unwrap()),
-            IntegerType::U128 => ClarityInteger::U128(low.try_into().unwrap()),
-            IntegerType::U256 => ClarityInteger::U256(low),
-            IntegerType::U512 => ClarityInteger::U512(low),
-            _ => panic!("unsigned integers larger than 512 bits are not currently supported.")
-        };
-        eprintln!("LOW UNS: {low_val:?}");
+    let trim: &[_] = &['(', ')'];
+    let words: Vec<_> = slice.trim_matches(trim).split(' ').collect();
+    if words.len() != 3 {
+        panic!("refined integer definition must have 3 words");
     }
 
-    if is_high_negative {
-        let high = BigInt::parse_bytes(high.as_bytes(), 10).unwrap() * -1;
-        high_val = match get_refined_integer_type_signed(&high) {
-            IntegerType::I32 => ClarityInteger::I32(high.try_into().unwrap()),
-            IntegerType::I64 => ClarityInteger::I64(high.try_into().unwrap()),
-            IntegerType::I128 => ClarityInteger::I128(high.try_into().unwrap()),
-            IntegerType::I256 => ClarityInteger::I256(high),
-            IntegerType::I512 => ClarityInteger::I512(high),
-            _ => panic!("signed integers larger than 512 bits are not currently supported"),
-        };
-        eprintln!("HIGH SIG: {high_val:?}");
-    } else {
-        let high = BigUint::parse_bytes(high.as_bytes(), 10).unwrap();
-        high_val = match get_refined_integer_type_unsigned(&high) {
-            IntegerType::U32 => ClarityInteger::U32(high.try_into().unwrap()),
-            IntegerType::U64 => ClarityInteger::U64(high.try_into().unwrap()),
-            IntegerType::U128 => ClarityInteger::U128(high.try_into().unwrap()),
-            IntegerType::U256 => ClarityInteger::U256(high),
-            IntegerType::U512 => ClarityInteger::U512(high),
-            _ => panic!("unsigned integers larger than 512 bits are not currently supported.")
-        };
-        eprintln!("HIGH UNS: {high_val:?}");
-    }
-        
-    RefinedInteger::new(low_val, high_val)
-}
+    eprintln!("words: {words:?}");
 
-fn get_refined_integer_type_signed(int: &BigInt) -> IntegerType {
-    if *int >= i32::MIN.into() && *int <= i32::MAX.into() {
-        IntegerType::I32
-    } else if *int >= i64::MIN.into() && *int <= i64::MAX.into() {
-        IntegerType::I64
-    } else if *int >= i128::MIN.into() && *int <= i128::MAX.into() {
-        IntegerType::I128
-    } else if *int >= *I256_MIN && *int <= *I256_MAX {
-        IntegerType::I256
-    } else if *int >= *I512_MIN && *int <= *I512_MAX {
-        IntegerType::I512
-    } else {
-        panic!("integer type not supported (out of range");
-    }
-}
+    let low: ClarityInteger = words[1].try_into().map_err(|e| panic!("fuck")).unwrap();
+    let high: ClarityInteger = words[2].try_into().map_err(|e| panic!("fuck")).unwrap();
 
-fn get_refined_integer_type_unsigned(int: &BigUint) -> IntegerType {
-    if *int <= u32::MAX.into() {
-        IntegerType::U32
-    } else if *int <= u64::MAX.into() {
-        IntegerType::U64
-    } else if *int <= u128::MAX.into() {
-        IntegerType::U128
-    } else if *int <= *U256_MAX {
-        IntegerType::U256
-    } else if *int <= *U512_MAX {
-        IntegerType::U512
-    } else {
-        panic!("integer type not supported (out of range)");
-    }
+    let ret = RefinedInteger::new(low, high);
+    eprintln!("refined int: {ret:?}");
+    return ret;
 }
 
 #[derive(Logos, Clone, Debug, PartialEq)]
@@ -135,7 +52,7 @@ pub enum Token {
     Comment,
     // Note: could specify separate regex's here to match the +/-/low/high combinations and
     // route to different parsing methods for each to optimize performance.
-    #[regex(r"\(int\s+(?P<sign_low>[-+])?(?P<low>[\d]+)\s+(?P<sign_high>[-+])?(?P<high>[\d]+)\)",
+    #[regex(r"\(int\s+[-+]?[\d]+\s+[-+]?[\d]+\)",
         callback = parse_refined_int)]
     RefinedInteger(RefinedInteger),
     #[regex("[a-zA-Z$_][a-zA-Z0-9$_]*", priority = 1)]
