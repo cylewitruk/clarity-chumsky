@@ -30,6 +30,9 @@ fn main() {
             Err(()) => (Token::Error, span.into()),
         });
 
+    let elapsed = Instant::now().duration_since(now);
+    println!("lexer elapsed: {:?}", elapsed);
+
     let lexer = Token::lexer(source);
     for token in lexer.into_iter() {
         let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
@@ -40,8 +43,6 @@ fn main() {
         // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
         // This involves giving chumsky an 'end of input' span: we just use a zero-width span at the end of the string
         .spanned((source.len()..source.len()).into());
-
-    eprintln!("elapsed: {:?}", Instant::now().duration_since(now));
 
     let now = Instant::now();
     // Parse the token stream with our chumsky parser
@@ -76,7 +77,7 @@ fn main() {
 const SRC: &str = r"
 ;; This is a comment
     (-
-        (* (+ 1 2 3 4 5) 7)
+        (* (+ 1 2 3 4 u5) 7)
         (/ 5 3)
     )
 ";

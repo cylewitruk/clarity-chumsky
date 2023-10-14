@@ -1,7 +1,7 @@
 use clarity::vm::Value;
 
 use crate::{tokens::IntegerType, value_ext::ValueExtensions};
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 
 #[derive(Debug)]
 pub enum SExpr {
@@ -28,6 +28,7 @@ impl SExpr {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
                         |acc, expr| {
+                            if acc.is_err() { return acc }
                             let val = Self::eval(expr)?;
                             val.checked_add(acc.unwrap())
                         }
@@ -37,6 +38,7 @@ impl SExpr {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
                         |acc, expr| {
+                            if acc.is_err() { return acc }
                             let val = Self::eval(expr)?;
                             acc.unwrap().checked_sub(val)
                         }
@@ -46,7 +48,9 @@ impl SExpr {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
                         |acc, expr| {
+                            if acc.is_err() { return acc }
                             let val = Self::eval(expr)?;
+                            if acc.is_err() { return acc }
                             val.checked_mul(acc.unwrap())
                         }
                     )
@@ -55,6 +59,7 @@ impl SExpr {
                     tail[1..].iter().fold(
                         Self::eval(&tail[0]),
                         |acc, expr| {
+                            if acc.is_err() { return acc }
                             let val = Self::eval(expr)?;
                             acc.unwrap().checked_div(val)
                         }
