@@ -10,7 +10,10 @@ use chumsky::span::SimpleSpan;
 use chumsky::Parser;
 use expressions::SExpr;
 use logos::Logos;
-use tokens::Token;
+use num_bigint::BigInt;
+use num_bigint::BigUint;
+
+use crate::tokens::Token;
 
 mod errors;
 mod expressions;
@@ -47,7 +50,7 @@ fn main() -> Result<()> {
     // Debug output
     let lexer = Token::lexer(source);
     for token in lexer.into_iter() {
-        let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
+        //let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
     }
 
     // ***************************
@@ -123,23 +126,62 @@ pub enum ClarityType {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntegerType {
-    U128,
+    I32,
+    U32,
+    I64,
+    U64,
     I128,
+    U128,
+    I256,
+    U256,
+    I512,
+    U512,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClarityInteger {
-    U128(u128),
+    I32(i32),
+    U32(u32),
+    I64(i64),
+    U64(u64),
     I128(i128),
+    U128(u128),
+    I256(BigInt),
+    U256(BigUint),
+    I512(BigInt),
+    U512(BigUint),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RefinedInteger {
+    pub low_val: ClarityInteger,
+    pub high_val: ClarityInteger
+}
+
+impl RefinedInteger {
+    pub fn new(
+        low_val: ClarityInteger, 
+        high_val: ClarityInteger
+    ) -> Self {
+        Self { low_val, high_val }
+    }
 }
 
 #[allow(dead_code)]
 const SRC: &str = r"
 ;; This is a comment
-    (-
-        (* (+ 1 2 3 4 5) 7)
-        (/ 5 3)
-    )
+
+;; I256
+(int -170141183460469231731687303715884105729 100)
+;; U256
+(int 170141183460469231731687303715884105729 100)
+// U512
+(int 0 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047)
+
+(-
+  (* (+ 1 2 3 4 5) 7)
+  (/ 5 3)
+)
 ";
 
 #[allow(dead_code)]

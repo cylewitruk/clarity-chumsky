@@ -16,8 +16,19 @@ impl SExpr {
     pub fn eval(&self) -> Result<Value> {
         match self {
             SExpr::LiteralInteger(ty) => Ok(match ty {
+                ClarityInteger::I32(i) => Value::Int((*i).into()),
+                ClarityInteger::U32(i) => Value::Int((*i).into()),
+                ClarityInteger::I64(i) => Value::Int((*i).into()),
+                ClarityInteger::U64(i) => Value::Int((*i).into()),
                 ClarityInteger::I128(i) => Value::Int(*i),
                 ClarityInteger::U128(i) => Value::UInt(*i),
+                // The Clarity `Value` type would need to be extended to have a type
+                // similar to the `ClarityInteger` type here in order to support
+                // integers larger than 128 bits.
+                ClarityInteger::I256(_) => unimplemented!(),
+                ClarityInteger::U256(_) => unimplemented!(),
+                ClarityInteger::I512(_) => unimplemented!(),
+                ClarityInteger::U512(_) => unimplemented!(),
             }),
             SExpr::List(list) => match &list[..] {
                 // ADDITION

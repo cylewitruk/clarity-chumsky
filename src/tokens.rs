@@ -1,8 +1,49 @@
 use std::fmt;
 
+use lazy_static::lazy_static;
 use logos::{Lexer, Logos};
+use num_bigint::{BigInt, BigUint};
+use regex::Regex;
 
-use crate::ClarityInteger;
+use crate::{ClarityInteger, IntegerType, RefinedInteger};
+
+lazy_static! {
+    static ref REFINED_INT_REGEX: Regex = Regex::new(
+        r"\(int\s+(?P<sign_low>[-+])?(?P<low>[\d]+)\s+(?P<sign_high>[-+])?(?P<high>[\d]+)\)"
+    ).unwrap();
+
+    static ref I256_MIN: BigInt = BigInt::parse_bytes(
+        "-57896044618658097711785492504343953926634992332820282019728792003956564819968".as_bytes(),
+        10
+    ).unwrap();
+
+    static ref U256_MAX: BigUint = BigUint::parse_bytes(
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935".as_bytes(),
+        10
+    ).unwrap();
+
+    static ref I256_MAX: BigInt = BigInt::parse_bytes(
+        "57896044618658097711785492504343953926634992332820282019728792003956564819967".as_bytes(),
+        10
+    ).unwrap();
+
+    static ref I512_MIN: BigInt = BigInt::parse_bytes(concat!(
+        r#"-6703903964971298549787012499102923063739682910296196688861780721860882015036773"#,
+        r#"488400937149083451713845015929093243025426876941405973284973216824503042048"#).as_bytes(),
+        10
+    ).unwrap();
+    
+    static ref I512_MAX: BigInt = BigInt::parse_bytes(concat!(
+        r#"670390396497129854978701249910292306373968291029619668886178072186088201503677"#,
+        r#"r#"3488400937149083451713845015929093243025426876941405973284973216824503042047"#).as_bytes(),
+    10).unwrap();
+
+    static ref U512_MAX: BigUint = BigUint::parse_bytes(concat!(
+        r#"13407807929942597099574024998205846127479365820592393377723561443721764030073546"#,
+        r#"976801874298166903427690031858186486050853753882811946569946433649006084095"#).as_bytes(), 
+        10
+    ).unwrap();
+}
 
 fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     let slice = lex.slice();
@@ -15,12 +56,117 @@ fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     }
 }
 
+fn parse_refined_int(lex: &mut Lexer<Token>) -> RefinedInteger {
+    let slice = lex.slice();
+    let caps = REFINED_INT_REGEX.captures(slice).unwrap();
+
+    let low = &caps["low"];
+    let high = &caps["high"];
+
+    let is_low_negative = caps.name("sign_low").map_or(false, |f| f.as_str().eq("-"));
+    let is_high_negative = caps.name("sign_high").map_or(false, |f| f.as_str().eq("-"));
+
+    eprintln!("parse_refined_int: {slice}, is_low_negative: {:?}, low: {}, is_high_negative: {:?}, high: {:?}",
+        is_low_negative, &caps["low"], is_high_negative, &caps["high"]);
+
+    let low_val: ClarityInteger;
+    let high_val: ClarityInteger;
+    
+
+    if is_low_negative {
+        let low = BigInt::parse_bytes(low.as_bytes(), 10).unwrap() * -1;
+        low_val = match get_refined_integer_type_signed(&low) {
+            IntegerType::I32 => ClarityInteger::I32(low.try_into().unwrap()),
+            IntegerType::I64 => ClarityInteger::I64(low.try_into().unwrap()),
+            IntegerType::I128 => ClarityInteger::I128(low.try_into().unwrap()),
+            IntegerType::I256 => ClarityInteger::I256(low),
+            IntegerType::I512 => ClarityInteger::I512(low),
+            _ => panic!("signed integers larger than 512 bits are not currently supported"),
+        };
+        eprintln!("LOW SIG: {low_val:?}");
+    } else {
+        let low = BigUint::parse_bytes(low.as_bytes(), 10).unwrap();
+        low_val = match get_refined_integer_type_unsigned(&low) {
+            IntegerType::U32 => ClarityInteger::U32(low.try_into().unwrap()),
+            IntegerType::U64 => ClarityInteger::U64(low.try_into().unwrap()),
+            IntegerType::U128 => ClarityInteger::U128(low.try_into().unwrap()),
+            IntegerType::U256 => ClarityInteger::U256(low),
+            IntegerType::U512 => ClarityInteger::U512(low),
+            _ => panic!("unsigned integers larger than 512 bits are not currently supported.")
+        };
+        eprintln!("LOW UNS: {low_val:?}");
+    }
+
+    if is_high_negative {
+        let high = BigInt::parse_bytes(high.as_bytes(), 10).unwrap() * -1;
+        high_val = match get_refined_integer_type_signed(&high) {
+            IntegerType::I32 => ClarityInteger::I32(high.try_into().unwrap()),
+            IntegerType::I64 => ClarityInteger::I64(high.try_into().unwrap()),
+            IntegerType::I128 => ClarityInteger::I128(high.try_into().unwrap()),
+            IntegerType::I256 => ClarityInteger::I256(high),
+            IntegerType::I512 => ClarityInteger::I512(high),
+            _ => panic!("signed integers larger than 512 bits are not currently supported"),
+        };
+        eprintln!("HIGH SIG: {high_val:?}");
+    } else {
+        let high = BigUint::parse_bytes(high.as_bytes(), 10).unwrap();
+        high_val = match get_refined_integer_type_unsigned(&high) {
+            IntegerType::U32 => ClarityInteger::U32(high.try_into().unwrap()),
+            IntegerType::U64 => ClarityInteger::U64(high.try_into().unwrap()),
+            IntegerType::U128 => ClarityInteger::U128(high.try_into().unwrap()),
+            IntegerType::U256 => ClarityInteger::U256(high),
+            IntegerType::U512 => ClarityInteger::U512(high),
+            _ => panic!("unsigned integers larger than 512 bits are not currently supported.")
+        };
+        eprintln!("HIGH UNS: {high_val:?}");
+    }
+        
+    RefinedInteger::new(low_val, high_val)
+}
+
+fn get_refined_integer_type_signed(int: &BigInt) -> IntegerType {
+    if *int >= i32::MIN.into() && *int <= i32::MAX.into() {
+        IntegerType::I32
+    } else if *int >= i64::MIN.into() && *int <= i64::MAX.into() {
+        IntegerType::I64
+    } else if *int >= i128::MIN.into() && *int <= i128::MAX.into() {
+        IntegerType::I128
+    } else if *int >= *I256_MIN && *int <= *I256_MAX {
+        IntegerType::I256
+    } else if *int >= *I512_MIN && *int <= *I512_MAX {
+        IntegerType::I512
+    } else {
+        panic!("integer type not supported (out of range");
+    }
+}
+
+fn get_refined_integer_type_unsigned(int: &BigUint) -> IntegerType {
+    if *int <= u32::MAX.into() {
+        IntegerType::U32
+    } else if *int <= u64::MAX.into() {
+        IntegerType::U64
+    } else if *int <= u128::MAX.into() {
+        IntegerType::U128
+    } else if *int <= *U256_MAX {
+        IntegerType::U256
+    } else if *int <= *U512_MAX {
+        IntegerType::U512
+    } else {
+        panic!("integer type not supported (out of range)");
+    }
+}
+
 #[derive(Logos, Clone, Debug, PartialEq)]
 pub enum Token {
     Error,
 
     #[regex(r";;[^\n]*\n", logos::skip)]
     Comment,
+    // Note: could specify separate regex's here to match the +/-/low/high combinations and
+    // route to different parsing methods for each to optimize performance.
+    #[regex(r"\(int\s+(?P<sign_low>[-+])?(?P<low>[\d]+)\s+(?P<sign_high>[-+])?(?P<high>[\d]+)\)",
+        callback = parse_refined_int)]
+    RefinedInteger(RefinedInteger),
     #[regex("[a-zA-Z$_][a-zA-Z0-9$_]*", priority = 1)]
     Identifier,
     #[token("uint")]
@@ -484,6 +630,7 @@ impl fmt::Display for Token {
             Token::Colon => write!(f, ":"),
             Token::SingleQuote => write!(f, "'"),
             Token::DoubleQuote => write!(f, "\""),
+            Token::RefinedInteger(_) => write!(f, "{self:?}"),
         }
     }
 }
