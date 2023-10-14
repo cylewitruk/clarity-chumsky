@@ -1,29 +1,29 @@
 use std::time::Instant;
 use std::vec::IntoIter;
 
-use anyhow::Result;
 use anyhow::bail;
+use anyhow::Result;
 pub(crate) use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::input::Input;
 use chumsky::input::Stream;
-use chumsky::Parser;
 use chumsky::span::SimpleSpan;
+use chumsky::Parser;
 use expressions::SExpr;
 use logos::Logos;
 use tokens::Token;
 
+mod errors;
 mod expressions;
 mod parser;
 mod tokens;
 mod value_ext;
-mod errors;
 
 fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
     let source = SRC;
 
     // ***************************
-    // ** LEXING 
+    // ** LEXING
     // ***************************
 
     let now = Instant::now();
@@ -38,7 +38,8 @@ fn main() -> Result<()> {
             // to work with
             Ok(tok) => (tok, span.into()),
             Err(()) => (Token::Error, span.into()),
-        }).collect();
+        })
+        .collect();
 
     let elapsed = Instant::now().duration_since(now);
     println!("lexer elapsed: {:?}", elapsed);
@@ -50,7 +51,7 @@ fn main() -> Result<()> {
     }
 
     // ***************************
-    // ** PARSING 
+    // ** PARSING
     // ***************************
     let now = Instant::now();
     let sexpr = parse(source, token_iter.into_iter())?;
@@ -58,19 +59,22 @@ fn main() -> Result<()> {
     println!("parser elapsed: {:?}", elapsed);
 
     // ***************************
-    // ** EVAL 
+    // ** EVAL
     // ***************************
 
     let now = Instant::now();
     match sexpr.eval() {
-        Ok(out) => println!("eval result = {}, time = {:?}", out, Instant::now().duration_since(now)),
+        Ok(out) => println!(
+            "eval result = {}, time = {:?}",
+            out,
+            Instant::now().duration_since(now)
+        ),
         Err(err) => println!("eval runtime error: {}", err),
     }
     let elapsed = Instant::now().duration_since(now);
     println!("eval elapsed: {:?}", elapsed);
 
     Ok(())
-    
 }
 
 fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExpr> {
@@ -87,7 +91,7 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
         Ok(sexpr) => {
             println!("parsing time = {:?}", Instant::now().duration_since(now));
             Ok(sexpr)
-        },
+        }
         // If parsing was unsuccessful, generate a nice user-friendly diagnostic with ariadne. You could also use
         // codespan, or whatever other diagnostic library you care about. You could even just display-print the errors
         // with Rust's built-in `Display` trait, but it's a little crude
@@ -114,7 +118,7 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
 pub enum ClarityType {
     Bool,
     Integer(IntegerType),
-    CallableContract
+    CallableContract,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -133,7 +137,7 @@ pub enum ClarityInteger {
 const SRC: &str = r"
 ;; This is a comment
     (-
-        (* (+ 1 u2 3 4 5) 7)
+        (* (+ 1 2 3 4 5) 7)
         (/ 5 3)
     )
 ";

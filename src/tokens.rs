@@ -2,12 +2,12 @@ use std::fmt;
 
 use logos::{Lexer, Logos};
 
-use crate::{IntegerType, ClarityInteger};
+use crate::ClarityInteger;
 
 fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     let slice = lex.slice();
-    if slice.starts_with('u') {
-        let uint: u128 = slice[1..].parse().unwrap();
+    if let Some(stripped) = slice.strip_prefix('u') {
+        let uint: u128 = stripped.parse().unwrap();
         ClarityInteger::U128(uint)
     } else {
         let int: i128 = slice.parse().unwrap();
@@ -15,15 +15,7 @@ fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
-enum LexingError {
-    ParseNumberError,
-    #[default]
-    Other,
-}
-
 #[derive(Logos, Clone, Debug, PartialEq)]
-//#[logos(error = LexingError)]
 pub enum Token {
     Error,
 

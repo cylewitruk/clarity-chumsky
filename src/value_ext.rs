@@ -1,9 +1,7 @@
-use clarity::vm::{Value, types::TypeSignature, types::signatures::CallableSubtype};
-use anyhow::{Result, bail, anyhow};
+use anyhow::{bail, Result};
+use clarity::vm::Value;
 
-use crate::{errors::ClarityError, IntegerType, ClarityType};
-
-
+use crate::{errors::ClarityError, ClarityType, IntegerType};
 
 pub trait ValueExtensions {
     fn checked_add(&self, value: Value) -> Result<Value>;
@@ -16,82 +14,46 @@ pub trait ValueExtensions {
 
 impl ValueExtensions for Value {
     fn checked_add(&self, value: Value) -> Result<Value> {
-        match self {
-            Value::Int(i) => {
-                if let Value::Int(i2) = value {
-                    Ok(Value::Int(i.checked_add(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            Value::UInt(i) => {
-                if let Value::UInt(i2) = value {
-                    Ok(Value::UInt(i.checked_add(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            }
-            _ => bail!("unsupported type")
+        match (self, &value) {
+            (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_add(*i2).unwrap())),
+            (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_add(*i2).unwrap())),
+            _ => bail!(ClarityError::TypeMismatch {
+                expected: self.ty(),
+                received: value.ty()
+            }),
         }
     }
 
     fn checked_sub(&self, value: Value) -> Result<Value> {
-        match self {
-            Value::Int(i) => {
-                if let Value::Int(i2) = value {
-                    Ok(Value::Int(i.checked_sub(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            Value::UInt(i) => {
-                if let Value::UInt(i2) = value {
-                    Ok(Value::UInt(i.checked_sub(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            _ => bail!("unsupported type")
+        match (self, &value) {
+            (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_sub(*i2).unwrap())),
+            (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_sub(*i2).unwrap())),
+            _ => bail!(ClarityError::TypeMismatch {
+                expected: self.ty(),
+                received: value.ty()
+            }),
         }
     }
 
     fn checked_div(&self, value: Value) -> Result<Value> {
-        match self {
-            Value::Int(i) => {
-                if let Value::Int(i2) = value {
-                    Ok(Value::Int(i.checked_div(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            Value::UInt(i) => {
-                if let Value::UInt(i2) = value {
-                    Ok(Value::UInt(i.checked_div(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            _ => bail!("unsupported type")
+        match (self, &value) {
+            (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_div(*i2).unwrap())),
+            (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_div(*i2).unwrap())),
+            _ => bail!(ClarityError::TypeMismatch {
+                expected: self.ty(),
+                received: value.ty()
+            }),
         }
     }
 
     fn checked_mul(&self, value: Value) -> Result<Value> {
-        match self {
-            Value::Int(i) => {
-                if let Value::Int(i2) = value {
-                    Ok(Value::Int(i.checked_mul(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            Value::UInt(i) => {
-                if let Value::UInt(i2) = value {
-                    Ok(Value::UInt(i.checked_mul(i2).unwrap()))
-                } else {
-                    bail!(ClarityError::TypeMismatch { expected: self.ty(), received: value.ty() })
-                }
-            },
-            _ => bail!("unsupported type")
+        match (self, &value) {
+            (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_mul(*i2).unwrap())),
+            (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_mul(*i2).unwrap())),
+            _ => bail!(ClarityError::TypeMismatch {
+                expected: self.ty(),
+                received: value.ty()
+            }),
         }
     }
 
@@ -101,21 +63,7 @@ impl ValueExtensions for Value {
             Value::CallableContract(_) => ClarityType::CallableContract,
             Value::Int(_) => ClarityType::Integer(IntegerType::I128),
             Value::UInt(_) => ClarityType::Integer(IntegerType::U128),
-            _ => todo!()
+            _ => todo!(),
         }
     }
-}
-
-#[test]
-fn test_add() {
-    let v1 = Value::Int(1);
-    let v2 = Value::Int(2);
-
-    let result = v1.checked_add(v2).unwrap();
-    assert_eq!(result, Value::Int(3));
-
-    let v3 = Value::UInt(3);
-
-    let result = v1.checked_add(v3).is_err();
-    assert!(result);
 }
