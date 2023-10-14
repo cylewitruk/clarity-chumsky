@@ -1,9 +1,14 @@
 use std::time::Instant;
+use std::vec::IntoIter;
 
+use anyhow::Result;
+use anyhow::bail;
 pub(crate) use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::input::Input;
 use chumsky::input::Stream;
 use chumsky::Parser;
+use chumsky::span::SimpleSpan;
+use expressions::SExpr;
 use logos::Logos;
 use tokens::Token;
 
@@ -12,14 +17,18 @@ mod parser;
 mod tokens;
 mod value_ext;
 
-fn main() {
+fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
     let source = SRC;
+
+    // ***************************
+    // ** LEXING 
+    // ***************************
 
     let now = Instant::now();
 
     // Create a logos lexer over the source code
-    let token_iter = Token::lexer(source)
+    let token_iter: Vec<_> = Token::lexer(source)
         .spanned()
         // Convert logos errors into tokens. We want parsing to be recoverable and not fail at the lexing stage, so
         // we have a dedicated `Token::Error` variant that represents a token error that was previously encountered
@@ -28,16 +37,42 @@ fn main() {
             // to work with
             Ok(tok) => (tok, span.into()),
             Err(()) => (Token::Error, span.into()),
-        });
+        }).collect();
 
     let elapsed = Instant::now().duration_since(now);
     println!("lexer elapsed: {:?}", elapsed);
 
+    // Debug output
     let lexer = Token::lexer(source);
     for token in lexer.into_iter() {
         let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
     }
 
+    // ***************************
+    // ** PARSING 
+    // ***************************
+    let now = Instant::now();
+    let sexpr = parse(source, token_iter.into_iter())?;
+    let elapsed = Instant::now().duration_since(now);
+    println!("parser elapsed: {:?}", elapsed);
+
+    // ***************************
+    // ** EVAL 
+    // ***************************
+
+    let now = Instant::now();
+    match sexpr.eval() {
+        Ok(out) => println!("Result = {}, time = {:?}", out, Instant::now().duration_since(now)),
+        Err(err) => println!("Runtime error: {}", err),
+    }
+    let elapsed = Instant::now().duration_since(now);
+    println!("eval elapsed: {:?}", elapsed);
+
+    Ok(())
+    
+}
+
+fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExpr> {
     // Turn the token iterator into a stream that chumsky can use for things like backtracking
     let token_stream = Stream::from_iter(token_iter)
         // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
@@ -48,9 +83,9 @@ fn main() {
     // Parse the token stream with our chumsky parser
     match parser::parser().parse(token_stream).into_result() {
         // If parsing was successful, attempt to evaluate the s-expression
-        Ok(sexpr) => match sexpr.eval() {
-            Ok(out) => println!("Result = {}, time = {:?}", out, Instant::now().duration_since(now)),
-            Err(err) => println!("Runtime error: {}", err),
+        Ok(sexpr) => {
+            println!("parsing time = {:?}", Instant::now().duration_since(now));
+            Ok(sexpr)
         },
         // If parsing was unsuccessful, generate a nice user-friendly diagnostic with ariadne. You could also use
         // codespan, or whatever other diagnostic library you care about. You could even just display-print the errors
@@ -69,6 +104,7 @@ fn main() {
                     .eprint(Source::from(source))
                     .unwrap();
             }
+            bail!("parsing failed")
         }
     }
 }
@@ -77,7 +113,7 @@ fn main() {
 const SRC: &str = r"
 ;; This is a comment
     (-
-        (* (+ 1 2 3 4 u5) 7)
+        (* (+ 1 2 3 4 5) 7)
         (/ 5 3)
     )
 ";
