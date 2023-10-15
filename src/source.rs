@@ -19,7 +19,7 @@ pub const REFINED_INT_SRC: &str = r"
 #[allow(dead_code)]
 pub const COUNTER_SRC: &str = r"
 ;; Multiplayer Counter contract
-
+(+ 1 2 3 4 5)
 (define-map counters principal uint)
 
 (define-read-only (get-count (who principal))

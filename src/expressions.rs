@@ -146,25 +146,26 @@ impl SExpr {
                 }
                 // ADDITION
                 [SExpr::Op(Op::Add), init, tail @ ..] => {
-                    tail.iter().skip(1).fold(Self::eval_inner(init), |acc, expr| {
+                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
+                        eprintln!("ADD: a={acc:?}, b={expr:?}");
                         acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_add(v))?)
                     })
                 }
                 // SUBTRACTION
                 [SExpr::Op(Op::Sub), init, tail @ ..] => {
-                    tail.iter().skip(1).fold(Self::eval_inner(init), |acc, expr| {
+                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
                         acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_sub(v))?)
                     })
                 }
                 // MULTIPLICATION
                 [SExpr::Op(Op::Mul), init, tail @ ..] => {
-                    tail.iter().skip(1).fold(Self::eval_inner(init), |acc, expr| {
+                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
                         acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_mul(v))?)
                     })
                 }
                 // DIVISION
                 [SExpr::Op(Op::Div), init, tail @ ..] => {
-                    tail.iter().skip(1).fold(Self::eval_inner(init), |acc, expr| {
+                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
                         acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_div(v))?)
                     })
                 }
