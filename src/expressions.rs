@@ -1,10 +1,9 @@
 use crate::{types::{ClarityInteger, Value, RefinedInteger}, value_ext::ValueExtensions};
-use anyhow::{bail, Result, Error};
+use anyhow::{bail, Result};
 
 #[derive(Debug)]
 pub enum SExpr {
     Identifier(String),
-    LiteralInteger(ClarityInteger),
     RefinedInteger(RefinedInteger),
     Closure(Vec<Self>),
 
@@ -77,14 +76,15 @@ pub enum Type {
 }
 
 impl SExpr {
+    /// Entrypoint for contract evaluation. Expects the contract to be wrapped
+    /// in an outer/top-level closure. This function will evaluate each top-level
+    /// contract expression and return an ordered list of results.
     pub fn eval(&self) -> Result<Vec<Value>> {
         let mut values: Vec<Value> = Default::default();
 
         if let SExpr::Closure(top_level) = self {
             for expr in top_level {
-                eprintln!("evaluating expr: {expr:?}");
                 let value = expr.eval_inner()?;
-                eprintln!("eval result: {value:?}");
                 values.push(value);
             }
         }
@@ -92,9 +92,24 @@ impl SExpr {
         Ok(values)
     }
 
+    /// Inner contract evaluation function which handles top-level expressions
+    /// and routes them further to specific evaluation functions.
     fn eval_inner(&self) -> Result<Value> {
         match self {
-            SExpr::LiteralInteger(ty) => Ok(match ty {
+            SExpr::Literal(lit) => Self::eval_literal(lit),
+            SExpr::Closure(exprs) => match &exprs[..] {
+                [SExpr::Define(_), ..] => Self::eval_defines(exprs),
+                [SExpr::Op(_), ..] => Self::eval_ops(exprs),
+                _ => bail!("cannot evaluate closure, no match found: {self:?}"),
+            },
+            _ => bail!("cannot evaluate operator: {self:?}"),
+        }
+    }
+
+    /// Evaluates a literal.
+    fn eval_literal(lit: &Literal) -> Result<Value> {
+        match lit {
+            Literal::Integer(int) => Ok(match int {
                 ClarityInteger::I32(i) => Value::Integer(ClarityInteger::I32(*i)),
                 ClarityInteger::U32(i) => Value::Integer(ClarityInteger::U32(*i)),
                 ClarityInteger::I64(i) => Value::Integer(ClarityInteger::I64(*i)),
@@ -112,82 +127,65 @@ impl SExpr {
                 ClarityInteger::I512(i) => Value::Integer(ClarityInteger::I512(i.clone())),
                 ClarityInteger::U512(i) => Value::Integer(ClarityInteger::U512(i.clone())),
             }),
-            SExpr::Literal(lit) => {
-                match &lit {
-                    Literal::Integer(int) => {
-                        match int {
-                            ClarityInteger::I128(i) => Ok(Value::Integer(ClarityInteger::I128(*i))),
-                            _ => todo!("integer type not implemented")
-                        }
-                    },
-                    _ => todo!("literal type not implemented")
-                }
-            }
-            SExpr::Closure(exprs) => match &exprs[..] {
-                // DEFINE-MAP
-                [SExpr::Define(Define::Map), name, key_ty, val_ty] => {
-                    eprintln!("DEFINE-MAP: name={name:?}, key_ty={key_ty:?}, val_ty={val_ty:?}");
-                    Ok(Value::Null)
-                },
-                // DEFINE READ-ONLY FUNCTION
-                [SExpr::Define(Define::ReadOnlyFunction), signature, body] => {
-                    eprintln!("DEFINE-READ-ONLY-FUNCTION: signature={signature:?}, body={body:?}");
-                    Ok(Value::Null)
-                }
-                // DEFINE PUBLIC FUNCTION
-                [SExpr::Define(Define::PublicFunction), signature, body] => {
-                    eprintln!("DEFINE-PUBLIC-FUNCTION: signature={signature:?}, body={body:?}");
-                    Ok(Value::Null)
-                }
-                // DEFINE PRIVATE FUNCTION
-                [SExpr::Define(Define::PrivateFunction), signature, body] => {
-                    eprintln!("DEFINE-PRIVATE-FUNCTION: signature={signature:?}, body={body:?}");
-                    Ok(Value::Null)
-                }
-                // ADDITION
-                [SExpr::Op(Op::Add), init, tail @ ..] => {
-                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
-                        eprintln!("ADD: a={acc:?}, b={expr:?}");
-                        acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_add(v))?)
-                    })
-                }
-                // SUBTRACTION
-                [SExpr::Op(Op::Sub), init, tail @ ..] => {
-                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
-                        acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_sub(v))?)
-                    })
-                }
-                // MULTIPLICATION
-                [SExpr::Op(Op::Mul), init, tail @ ..] => {
-                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
-                        acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_mul(v))?)
-                    })
-                }
-                // DIVISION
-                [SExpr::Op(Op::Div), init, tail @ ..] => {
-                    tail.iter().fold(Self::eval_inner(init), |acc, expr| {
-                        acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_div(v))?)
-                    })
-                }
-                [SExpr::Closure(inner), init, tail @ ..] => {
-                    eprintln!("\nCLOSURE >>>\nINNER: {inner:?}\nINIT: {init:?}\nTAIL: {tail:?}\n");
-                    let mut last_val: Value = match &inner[..] {
-                        [SExpr::Define(Define::Map), name, key_ty, val_ty, tail @ ..] => {
-                            eprintln!("DEFINE-MAP: name={name:?}, key_ty={key_ty:?}, val_ty={val_ty:?}");
-                            Value::Null
-                        },
-                        _ => bail!("SHIT: {inner:?} TAIL: {tail:?}")
-                    };
+            _ => bail!("literal type {lit:?} not yet implemented")
+        }
+    }
 
-                    for expr in tail {
-                        last_val = Self::eval_inner(expr)?;
-                    }
-                    //Ok(last_val)
-                    bail!("INNER: {inner:?} TAIL: {tail:?}")
-                },
-                _ => bail!("cannot evaluate list, no match found: {self:?}"),
+    /// Evaluation of define-* statements.
+    fn eval_defines(exprs: &[SExpr]) -> Result<Value> {
+        match &exprs[..] {
+            // DEFINE-MAP
+            [SExpr::Define(Define::Map), name, key_ty, val_ty] => {
+                eprintln!("DEFINE-MAP: name={name:?}, key_ty={key_ty:?}, val_ty={val_ty:?}");
+                Ok(Value::Null)
+            }
+            // DEFINE READ-ONLY FUNCTION
+            [SExpr::Define(Define::ReadOnlyFunction), signature, body] => {
+                eprintln!("DEFINE-READ-ONLY-FUNCTION: signature={signature:?}, body={body:?}");
+                Ok(Value::Null)
+            }
+            // DEFINE PUBLIC FUNCTION
+            [SExpr::Define(Define::PublicFunction), signature, body] => {
+                eprintln!("DEFINE-PUBLIC-FUNCTION: signature={signature:?}, body={body:?}");
+                Ok(Value::Null)
+            }
+            // DEFINE PRIVATE FUNCTION
+            [SExpr::Define(Define::PrivateFunction), signature, body] => {
+                eprintln!("DEFINE-PRIVATE-FUNCTION: signature={signature:?}, body={body:?}");
+                Ok(Value::Null)
+            }
+            _ => bail!("define function not yet implemented.")
+        }
+    }
+
+    /// Evaluation of operations (Clarity functions).
+    fn eval_ops(exprs: &[SExpr]) -> Result<Value> {
+        match &exprs[..] {
+            // ADDITION
+            [SExpr::Op(Op::Add), init, tail @ ..] => {
+                tail.iter().fold(Self::eval_inner(init), |acc, expr| {
+                    acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_add(v))?)
+                })
+            }
+            // SUBTRACTION
+            [SExpr::Op(Op::Sub), init, tail @ ..] => {
+                tail.iter().fold(Self::eval_inner(init), |acc, expr| {
+                    acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_sub(v))?)
+                })
+            }
+            // MULTIPLICATION
+            [SExpr::Op(Op::Mul), init, tail @ ..] => {
+                tail.iter().fold(Self::eval_inner(init), |acc, expr| {
+                    acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_mul(v))?)
+                })
+            }
+            // DIVISION
+            [SExpr::Op(Op::Div), init, tail @ ..] => {
+                tail.iter().fold(Self::eval_inner(init), |acc, expr| {
+                    acc.and_then(|a| Self::eval_inner(expr).map(|v| a.checked_div(v))?)
+                })
             },
-            _ => bail!("cannot evaluate operator: {self:?}"),
+            _ => bail!("op not yet implemented: {exprs:?}")
         }
     }
 }
