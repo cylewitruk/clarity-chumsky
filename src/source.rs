@@ -1,7 +1,5 @@
 #[allow(dead_code)]
 pub const SRC: &str = r"
-;; This is a comment
-
 ;; I256
 (int -170141183460469231731687303715884105729 100)
 ;; U256
@@ -12,6 +10,21 @@ pub const SRC: &str = r"
 (-
   (* (+ 1 2 3 4 5) 7)
   (/ 5 3)
+)
+";
+
+#[allow(dead_code)]
+pub const COUNTER_SRC: &str = r"
+;; Multiplayer Counter contract
+
+(define-map counters principal uint)
+
+(define-read-only (get-count (who principal))
+	(default-to u0 (map-get? counters who))
+)
+
+(define-public (count-up)
+	(ok (map-set counters tx-sender (+ (get-count tx-sender) u1)))
 )
 ";
 

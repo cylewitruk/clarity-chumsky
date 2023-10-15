@@ -6,14 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-amplify_num = "0.5.0"
 anyhow = "1.0.75"
 ariadne = "0.3.0"
 bigint = "4.4.3"
 chumsky = "1.0.0-alpha.6"
 clap = { version = "4.4.6", features = ["derive"] }
 clarity = { path = "../../stacks-network/stacks-blockchain/clarity" }
-heapsize = "0.4.2"
 lazy_static = "1.4.0"
 logos = "0.13.0"
 num-bigint = "0.4.4"

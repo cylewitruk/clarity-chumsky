@@ -1,7 +1,9 @@
 use anyhow::{bail, Result};
-use clarity::vm::Value;
 
-use crate::{errors::ClarityError, types::{ClarityType, IntegerType}};
+use crate::{
+    errors::ClarityError,
+    types::{ClarityType, IntegerType, Value},
+};
 
 pub trait ValueExtensions {
     fn checked_add(&self, value: Value) -> Result<Value>;
@@ -63,7 +65,18 @@ impl ValueExtensions for Value {
             Value::CallableContract(_) => ClarityType::CallableContract,
             Value::Int(_) => ClarityType::Integer(IntegerType::I128),
             Value::UInt(_) => ClarityType::Integer(IntegerType::U128),
-            _ => todo!(),
+            Value::Integer(i) => match i {
+                crate::types::ClarityInteger::I32(_) => ClarityType::Integer(IntegerType::I32),
+                crate::types::ClarityInteger::U32(_) => ClarityType::Integer(IntegerType::U32),
+                crate::types::ClarityInteger::I64(_) => ClarityType::Integer(IntegerType::I64),
+                crate::types::ClarityInteger::U64(_) => ClarityType::Integer(IntegerType::U64),
+                crate::types::ClarityInteger::I128(_) => ClarityType::Integer(IntegerType::I128),
+                crate::types::ClarityInteger::U128(_) => ClarityType::Integer(IntegerType::U128),
+                crate::types::ClarityInteger::I256(_) => ClarityType::Integer(IntegerType::I256),
+                crate::types::ClarityInteger::U256(_) => ClarityType::Integer(IntegerType::U256),
+                crate::types::ClarityInteger::I512(_) => ClarityType::Integer(IntegerType::I512),
+                crate::types::ClarityInteger::U512(_) => ClarityType::Integer(IntegerType::U512),
+            }
         }
     }
 }

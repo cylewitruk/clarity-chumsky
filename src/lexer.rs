@@ -1,31 +1,27 @@
 use std::fmt;
 
-use lazy_static::lazy_static;
 use logos::{Lexer, Logos};
-use num_bigint::{BigInt, BigUint};
-use regex::Regex;
 
-use crate::types::*;
+use crate::{errors::ClarityError, types::*};
 
-lazy_static! {
-    static ref REFINED_INT_REGEX: Regex = Regex::new(
-        r"\(int\s+(?P<sign_low>[-+])?(?P<low>[\d]+)\s+(?P<sign_high>[-+])?(?P<high>[\d]+)\)"
-    ).unwrap();
-}
-
-fn parse_int(lex: &mut Lexer<Token>) -> ClarityInteger {
+/// Parses a string into one of the Clarity standard integer types (128-bit).
+fn parse_int_token(lex: &mut Lexer<Token>) -> Result<ClarityInteger, ClarityError> {
     let slice = lex.slice();
     if let Some(stripped) = slice.strip_prefix('u') {
-        let uint: u128 = stripped.parse().unwrap();
-        ClarityInteger::U128(uint)
+        let uint: u128 = stripped
+            .parse()
+            .map_err(|e| ClarityError::ParseInt { inner: e })?;
+        Ok(ClarityInteger::U128(uint))
     } else {
-        let int: i128 = slice.parse().unwrap();
-        ClarityInteger::I128(int)
+        let int: i128 = slice
+            .parse()
+            .map_err(|e| ClarityError::ParseInt { inner: e })?;
+        Ok(ClarityInteger::I128(int))
     }
 }
 
-fn parse_refined_int(lex: &mut Lexer<Token>) -> RefinedInteger {
-
+/// Parses a string into a Refined Integer type definition expression..
+fn parse_refined_int_token(lex: &mut Lexer<Token>) -> Result<RefinedInteger, ClarityError> {
     let slice = lex.slice();
 
     let trim: &[_] = &['(', ')'];
@@ -34,34 +30,77 @@ fn parse_refined_int(lex: &mut Lexer<Token>) -> RefinedInteger {
         panic!("refined integer definition must have 3 words");
     }
 
-    eprintln!("words: {words:?}");
-
-    let low: ClarityInteger = words[1].try_into().map_err(|e| panic!("fuck")).unwrap();
-    let high: ClarityInteger = words[2].try_into().map_err(|e| panic!("fuck")).unwrap();
+    let low: ClarityInteger =
+        words[1]
+            .try_into()
+            .map_err(|e| ClarityError::IntoClarityInteger {
+                from: words[1].into(),
+                inner: e,
+            })?;
+    let high: ClarityInteger =
+        words[2]
+            .try_into()
+            .map_err(|e| ClarityError::IntoClarityInteger {
+                from: words[2].into(),
+                inner: e,
+            })?;
 
     let ret = RefinedInteger::new(low, high);
     eprintln!("refined int: {ret:?}");
-    return ret;
+    return Ok(ret);
 }
 
+/// Parses a string type definition expression.
+fn parse_string_token(lex: &mut Lexer<Token>) -> Result<u32, ClarityError> {
+    let slice = lex.slice();
+    let trim: &[_] = &['(', ')'];
+    let words: Vec<_> = slice.trim_matches(trim).split(' ').collect();
+    if words.len() != 2 {
+        return Err(ClarityError::Undefined);
+    }
+    if !["string-ascii", "string-utf8"].contains(&words[0].trim()) {
+        return Err(ClarityError::Undefined);
+    }
+
+    let len: u32 = words[1]
+        .trim()
+        .parse()
+        .map_err(|e| ClarityError::ParseInt { inner: e })?;
+
+    Ok(len)
+}
+
+/// Parses an identifier token.
+fn parse_identifier_token(lex: &mut Lexer<Token>) -> Result<String, ClarityError> {
+    let slice = lex.slice();
+    let trim: &[_] = &['(', ')'];
+    Ok(slice.trim_matches(trim).trim().to_string())
+}
+
+/// Enum of all tokens in the Clarity language.
 #[derive(Logos, Clone, Debug, PartialEq)]
+#[logos(error = ClarityError)]
 pub enum Token {
     Error,
 
     #[regex(r";;[^\n]*\n", logos::skip)]
     Comment,
-    // Note: could specify separate regex's here to match the +/-/low/high combinations and
-    // route to different parsing methods for each to optimize performance.
-    #[regex(r"\(int\s+[-+]?[\d]+\s+[-+]?[\d]+\)",
-        callback = parse_refined_int)]
-    RefinedInteger(RefinedInteger),
-    #[regex("[a-zA-Z$_][a-zA-Z0-9$_]*", priority = 1)]
-    Identifier,
-    #[token("uint")]
-    TypeUInt,
-    #[token("int")]
-    TypeInt,
-    #[regex("u?[0-9]+", priority = 2, callback = parse_int )]
+
+    #[regex(r"[ \t\f\n]+", logos::skip)]
+    Whitespace,
+
+    // Optional/response
+    #[token("default-to")]
+    OpDefaultTo,
+    #[token("err")]
+    OpErr,
+    #[token("ok")]
+    OpOk,
+    #[token("some")]
+    OpSome,
+
+    // Literals
+    #[regex("u?[0-9]+", priority = 2, callback = parse_int_token )]
     LiteralInteger(ClarityInteger),
     #[regex("0b[01]+")]
     LiteralBinary,
@@ -85,8 +124,21 @@ pub enum Token {
     SingleQuote,
     #[token("\"")]
     DoubleQuote,
-    #[regex(r"[ \t\f\n]+", logos::skip)]
-    Whitespace,
+
+    // Types
+    #[regex(r"int\s+[-+]?[\d]+\s+[-+]?[\d]+",
+        callback = parse_refined_int_token)]
+    RefinedInteger(RefinedInteger),
+    #[token("uint")]
+    UInt,
+    #[token("int")]
+    Int,
+    #[regex(r"\(string-ascii [\d]+\)", callback = parse_string_token)]
+    AsciiString(u32),
+    #[regex(r"\(string-utf8 [\d]+\)", callback = parse_string_token)]
+    Utf8String(u32),
+    #[token("principal")]
+    Principal,
 
     // Keywords
     #[token("block-height")]
@@ -204,7 +256,7 @@ pub enum Token {
     OpDefinePrivate,
     #[token("define-public")]
     OpDefinePublic,
-    #[token("define-readonly")]
+    #[token("define-read-only")]
     OpDefineReadOnly,
     #[token("define-trait")]
     OpDefineTrait,
@@ -319,16 +371,6 @@ pub enum Token {
     #[token("try!")]
     OpTryThrow,
 
-    // Optional/response
-    #[token("default-to")]
-    OpDefaultTo,
-    #[token("err")]
-    OpErr,
-    #[token("ok")]
-    OpOk,
-    #[token("some")]
-    OpSome,
-
     // Contract functions
     #[token("contract-call?")]
     OpContractCallOpt,
@@ -372,6 +414,9 @@ pub enum Token {
     OpLog2,
     #[token("keccak256")]
     OpKeccak256,
+
+    #[regex("[a-zA-Z$_][a-zA-Z0-9\\-]*", priority = 1, callback = parse_identifier_token)]
+    Identifier(String),
 }
 
 impl fmt::Display for Token {
@@ -493,9 +538,9 @@ impl fmt::Display for Token {
             Token::OpImplTrait => write!(f, "impl-trait"),
             Token::OpUseTrait => write!(f, "use-trait"),
             Token::OpPrint => write!(f, "print"),
-            Token::Identifier => write!(f, "<identifier>"),
-            Token::TypeUInt => write!(f, "<uint>"),
-            Token::TypeInt => write!(f, "<int>"),
+            Token::Identifier(str) => write!(f, "<ident: {str}>"),
+            Token::UInt => write!(f, "<uint>"),
+            Token::Int => write!(f, "<int>"),
             Token::LiteralBinary => write!(f, "<binary>"),
             Token::LiteralHex => write!(f, "<hex>"),
             Token::LiteralAsciiString => write!(f, "<string-ascii>"),
@@ -518,7 +563,10 @@ impl fmt::Display for Token {
             Token::Colon => write!(f, ":"),
             Token::SingleQuote => write!(f, "'"),
             Token::DoubleQuote => write!(f, "\""),
-            Token::RefinedInteger(_) => write!(f, "{self:?}"),
+            Token::RefinedInteger(int) => write!(f, "(int {} {})", int.low_val, int.high_val),
+            Token::AsciiString(len) => write!(f, "<string-ascii {len}>"),
+            Token::Utf8String(len) => write!(f, "<string-utf8 {len}>"),
+            Token::Principal => write!(f, "<principal>"),
         }
     }
 }

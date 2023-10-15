@@ -11,20 +11,23 @@ use chumsky::Parser;
 use expressions::SExpr;
 use logos::Logos;
 
-use crate::tokens::Token;
 use crate::source::*;
+use crate::lexer::Token;
 
 mod errors;
 mod expressions;
 mod parser;
-mod tokens;
-mod value_ext;
 mod source;
+mod lexer;
 mod types;
+mod value_ext;
+mod ast;
 
 fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
-    let source = SRC;
+    //let source = SRC;
+    let source = COUNTER_SRC;
+    let source = &format!("({source})");
 
     // ***************************
     // ** LEXING
@@ -41,7 +44,7 @@ fn main() -> Result<()> {
             // Turn the `Range<usize>` spans logos gives us into chumsky's `SimpleSpan` via `Into`, because it's easier
             // to work with
             Ok(tok) => (tok, span.into()),
-            Err(()) => (Token::Error, span.into()),
+            Err(_) => (Token::Error, span.into()),
         })
         .collect();
 
@@ -51,7 +54,7 @@ fn main() -> Result<()> {
     // Debug output
     let lexer = Token::lexer(source);
     for token in lexer.into_iter() {
-        //let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
+        let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
     }
 
     // ***************************
@@ -69,7 +72,7 @@ fn main() -> Result<()> {
     let now = Instant::now();
     match sexpr.eval() {
         Ok(out) => println!(
-            "eval result = {}, time = {:?}",
+            "eval result = {:?}, time = {:?}",
             out,
             Instant::now().duration_since(now)
         ),
@@ -117,4 +120,3 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
         }
     }
 }
-
