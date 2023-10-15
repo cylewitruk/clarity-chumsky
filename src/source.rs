@@ -1,16 +1,19 @@
 #[allow(dead_code)]
 pub const SRC: &str = r"
+(-
+  (* (+ 1 2 3 4 5) 7)
+  (/ 5 3)
+)
+";
+
+#[allow(dead_code)]
+pub const REFINED_INT_SRC: &str = r"
 ;; I256
 (int -170141183460469231731687303715884105729 100)
 ;; U256
 (int 170141183460469231731687303715884105729 100)
 // U512
 (int 0 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047)
-
-(-
-  (* (+ 1 2 3 4 5) 7)
-  (/ 5 3)
-)
 ";
 
 #[allow(dead_code)]
@@ -26,7 +29,15 @@ pub const COUNTER_SRC: &str = r"
 (define-public (count-up)
 	(ok (map-set counters tx-sender (+ (get-count tx-sender) u1)))
 )
+
+(-
+  (* (+ 1 2 3 4 5) 7)
+  (/ 5 3)
+)
 ";
+
+#[allow(dead_code)]
+pub const DEFINE_MAP_SRC: &str = "(define-map counters principal uint)";
 
 #[allow(dead_code)]
 pub const CONTRACT_SRC: &str = r"

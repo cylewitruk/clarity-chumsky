@@ -4,12 +4,15 @@ use std::vec::IntoIter;
 use anyhow::bail;
 use anyhow::Result;
 pub(crate) use ariadne::{Color, Label, Report, ReportKind, Source};
+use chumsky::extra::Full;
+use chumsky::extra::State;
 use chumsky::input::Input;
 use chumsky::input::Stream;
 use chumsky::span::SimpleSpan;
 use chumsky::Parser;
 use expressions::SExpr;
 use logos::Logos;
+use parser::ParsingState;
 
 use crate::source::*;
 use crate::lexer::Token;
@@ -22,11 +25,14 @@ mod lexer;
 mod types;
 mod value_ext;
 mod ast;
+mod signatures;
 
 fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
     //let source = SRC;
     let source = COUNTER_SRC;
+    //let source = DEFINE_MAP_SRC;
+
     let source = &format!("({source})");
 
     // ***************************
@@ -93,7 +99,9 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
 
     let now = Instant::now();
     // Parse the token stream with our chumsky parser
-    match parser::parser().parse(token_stream).into_result() {
+    let mut state = ParsingState::default();
+
+    match parser::parser().parse_with_state(token_stream, &mut state).into_result() {
         // If parsing was successful, attempt to evaluate the s-expression
         Ok(sexpr) => {
             println!("parsing time = {:?}", Instant::now().duration_since(now));

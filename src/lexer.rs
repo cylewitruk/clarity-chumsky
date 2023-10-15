@@ -5,7 +5,7 @@ use logos::{Lexer, Logos};
 use crate::{errors::ClarityError, types::*};
 
 /// Parses a string into one of the Clarity standard integer types (128-bit).
-fn parse_int_token(lex: &mut Lexer<Token>) -> Result<ClarityInteger, ClarityError> {
+fn parse_int_token<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Result<ClarityInteger, ClarityError> {
     let slice = lex.slice();
     if let Some(stripped) = slice.strip_prefix('u') {
         let uint: u128 = stripped
@@ -21,7 +21,7 @@ fn parse_int_token(lex: &mut Lexer<Token>) -> Result<ClarityInteger, ClarityErro
 }
 
 /// Parses a string into a Refined Integer type definition expression..
-fn parse_refined_int_token(lex: &mut Lexer<Token>) -> Result<RefinedInteger, ClarityError> {
+fn parse_refined_int_token<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Result<RefinedInteger, ClarityError> {
     let slice = lex.slice();
 
     let trim: &[_] = &['(', ')'];
@@ -51,7 +51,7 @@ fn parse_refined_int_token(lex: &mut Lexer<Token>) -> Result<RefinedInteger, Cla
 }
 
 /// Parses a string type definition expression.
-fn parse_string_token(lex: &mut Lexer<Token>) -> Result<u32, ClarityError> {
+fn parse_string_token<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Result<u32, ClarityError> {
     let slice = lex.slice();
     let trim: &[_] = &['(', ')'];
     let words: Vec<_> = slice.trim_matches(trim).split(' ').collect();
@@ -71,7 +71,7 @@ fn parse_string_token(lex: &mut Lexer<Token>) -> Result<u32, ClarityError> {
 }
 
 /// Parses an identifier token.
-fn parse_identifier_token(lex: &mut Lexer<Token>) -> Result<String, ClarityError> {
+fn parse_identifier_token<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Result<String, ClarityError> {
     let slice = lex.slice();
     let trim: &[_] = &['(', ')'];
     Ok(slice.trim_matches(trim).trim().to_string())
@@ -80,7 +80,7 @@ fn parse_identifier_token(lex: &mut Lexer<Token>) -> Result<String, ClarityError
 /// Enum of all tokens in the Clarity language.
 #[derive(Logos, Clone, Debug, PartialEq)]
 #[logos(error = ClarityError)]
-pub enum Token {
+pub enum Token<'a> {
     Error,
 
     #[regex(r";;[^\n]*\n", logos::skip)]
@@ -107,9 +107,9 @@ pub enum Token {
     #[regex("0x[0-9a-fA-F]+")]
     LiteralHex,
     #[regex(r#"u"([^"\\]|\\t|\\u|\\n|\\")*""#)]
-    LiteralUtf8String,
+    LiteralUtf8String(&'a str),
     #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#)]
-    LiteralAsciiString,
+    LiteralAsciiString(&'a str),
     #[token("(")]
     ParenOpen,
     #[token(")")]
@@ -419,7 +419,7 @@ pub enum Token {
     Identifier(String),
 }
 
-impl fmt::Display for Token {
+impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Token::Comment => write!(f, "<comment>"),
@@ -543,8 +543,8 @@ impl fmt::Display for Token {
             Token::Int => write!(f, "<int>"),
             Token::LiteralBinary => write!(f, "<binary>"),
             Token::LiteralHex => write!(f, "<hex>"),
-            Token::LiteralAsciiString => write!(f, "<string-ascii>"),
-            Token::LiteralUtf8String => write!(f, "<string-utf8"),
+            Token::LiteralAsciiString(str) => write!(f, "<string-ascii: \"{str}\">"),
+            Token::LiteralUtf8String(str) => write!(f, "<string-utf8: \"{str}\">"),
             Token::BraceOpen => write!(f, "{{"),
             Token::BraceClose => write!(f, "}}"),
             Token::BlockHeight => write!(f, "block-height"),

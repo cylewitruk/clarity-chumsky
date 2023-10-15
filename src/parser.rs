@@ -1,14 +1,29 @@
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::{input::ValueInput, prelude::*, extra::{State, Full, Err}, error::Error};
 
 use crate::{
     expressions::{SExpr, Define, Op, Type, Literal, Keyword}, 
-    lexer::Token
+    lexer::Token, signatures::{MapSignature, FunctionSignature}
 };
 
-pub fn parser<'a, I>() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token>>>
+pub struct ParsingState {
+    maps: Vec<MapSignature>,
+    functions: Vec<FunctionSignature>
+}
+
+impl Default for ParsingState {
+    fn default() -> Self {
+        Self { 
+            maps: Default::default(), 
+            functions: Default::default() 
+        }
+    }
+}
+
+pub fn parser<'a, I>() -> impl Parser<'a, I, SExpr, Full::<Rich<'a, Token<'a>>, ParsingState, ()>>
 where
-    I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
+
     recursive(|sexpr| {
 
         // Define functions
@@ -69,7 +84,7 @@ where
         let list = sexpr
             .repeated()
             .collect()
-            .map(SExpr::List)
+            .map(SExpr::Closure)
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose));
 
         list.clone().map(|l| {
