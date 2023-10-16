@@ -147,7 +147,7 @@ pub enum TryIntoClarityIntError {
     FromBigUInt(TryFromBigIntError<BigUint>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FunctionKind {
     Public,
     Private,

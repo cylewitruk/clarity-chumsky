@@ -1,79 +1,5 @@
-use crate::{types::{ClarityInteger, Value, RefinedInteger}, value_ext::ValueExtensions};
+use crate::{types::{ClarityInteger, Value}, value_ext::ValueExtensions, ast::{Define, Op, Literal, SExpr}};
 use anyhow::{bail, Result};
-
-#[derive(Debug)]
-pub enum SExpr {
-    Identifier(String),
-    RefinedInteger(RefinedInteger),
-    Closure(Vec<Self>),
-
-    Define(Define),
-    Op(Op),
-    TypeDef(Type),
-    Literal(Literal),
-    Keyword(Keyword),
-}
-
-#[derive(Debug)]
-pub enum Keyword {
-    BlockHeight,
-    BurnBlockHeight,
-    ChainId,
-    ContractCaller,
-    False,
-    IsInMainnet,
-    IsInRegTest,
-    None,
-    StxLiquidSupply,
-    True,
-    TxSender,
-    TxSponsor
-}
-
-#[derive(Debug)]
-pub enum Define {
-    Map,
-    DataVar,
-    PublicFunction,
-    PrivateFunction,
-    ReadOnlyFunction
-}
-
-#[derive(Debug)]
-pub enum Op {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    DefaultTo,
-    MapGet,
-    Ok,
-    MapSet,
-}
-
-#[derive(Debug)]
-pub enum Literal {
-    Int,
-    UInt,
-    Integer(ClarityInteger),
-    AsciiString,
-    Utf8String
-}
-
-#[derive(Debug)]
-pub enum Type {
-    Int,
-    UInt,
-    Bool,
-    Principal,
-    Buff,
-    StringAscii(u32),
-    StringUtf8(u32),
-    List,
-    Tuple,
-    Optional,
-    Response
-}
 
 impl SExpr {
     /// Entrypoint for contract evaluation. Expects the contract to be wrapped
@@ -135,7 +61,7 @@ impl SExpr {
     fn eval_defines(exprs: &[SExpr]) -> Result<Value> {
         match &exprs[..] {
             // DEFINE-MAP
-            [SExpr::Define(Define::Map), name, key_ty, val_ty] => {
+            [SExpr::Define(Define::Map(def)), name, key_ty, val_ty] => {
                 eprintln!("DEFINE-MAP: name={name:?}, key_ty={key_ty:?}, val_ty={val_ty:?}");
                 Ok(Value::Null)
             }

@@ -4,15 +4,12 @@ use std::vec::IntoIter;
 use anyhow::bail;
 use anyhow::Result;
 pub(crate) use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::extra::Full;
-use chumsky::extra::State;
 use chumsky::input::Input;
 use chumsky::input::Stream;
 use chumsky::span::SimpleSpan;
 use chumsky::Parser;
-use expressions::SExpr;
+use ast::SExpr;
 use logos::Logos;
-use parser::ParsingState;
 
 use crate::source::*;
 use crate::lexer::Token;
@@ -33,7 +30,7 @@ fn main() -> Result<()> {
     let source = COUNTER_SRC;
     //let source = DEFINE_MAP_SRC;
 
-    let source = &format!("({source})");
+    let source = &format!("{source}");
 
     // ***************************
     // ** LEXING
@@ -60,7 +57,7 @@ fn main() -> Result<()> {
     // Debug output
     let lexer = Token::lexer(source);
     for token in lexer.into_iter() {
-        let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
+        //let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
     }
 
     // ***************************
@@ -75,22 +72,23 @@ fn main() -> Result<()> {
     // ** EVAL
     // ***************************
 
-    let now = Instant::now();
-    match sexpr.eval() {
-        Ok(out) => println!(
-            "eval result = {:?}, time = {:?}",
-            out,
-            Instant::now().duration_since(now)
-        ),
-        Err(err) => println!("eval runtime error: {}", err),
+    
+    for expr in sexpr {
+        let now = Instant::now();
+        match expr.eval() {
+            Ok(out) => println!(
+                "eval result = {:?}, time = {:?}",
+                out,
+                Instant::now().duration_since(now)
+            ),
+            Err(err) => println!("eval runtime error: {}", err),
+        }
     }
-    let elapsed = Instant::now().duration_since(now);
-    println!("eval elapsed: {:?}", elapsed);
 
     Ok(())
 }
 
-fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExpr> {
+fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<Vec<SExpr>> {
     // Turn the token iterator into a stream that chumsky can use for things like backtracking
     let token_stream = Stream::from_iter(token_iter)
         // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
@@ -98,10 +96,8 @@ fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<SExp
         .spanned((source.len()..source.len()).into());
 
     let now = Instant::now();
-    // Parse the token stream with our chumsky parser
-    let mut state = ParsingState::default();
 
-    match parser::parser().parse_with_state(token_stream, &mut state).into_result() {
+    match parser::top_level_parser().parse(token_stream).into_result() {
         // If parsing was successful, attempt to evaluate the s-expression
         Ok(sexpr) => {
             println!("parsing time = {:?}", Instant::now().duration_since(now));
