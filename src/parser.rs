@@ -169,7 +169,7 @@ where
 pub type Span = SimpleSpan<usize>;
 //pub type Spanned<T> = (T, Span);
 
-pub fn literal_parser<'a, I>() -> impl Parser<'a, I, Literal, extra::Err<Rich<'a, Token, Span>>>
+pub fn literal_parser<'a, I>() -> impl Parser<'a, I, Literal, extra::Err<Rich<'a, Token, Span>>> + Clone
 where
     I: ValueInput<'a, Token = Token, Span = SimpleSpan>
 {
@@ -188,7 +188,7 @@ where
     recursive(|expr| {
         let default_to = just(Token::OpDefaultTo)
             .ignore_then(literal_parser())
-            .then(expr_parser())
+            .then(expr)
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
             .map(|(default, tail)| {
                 eprintln!("default: {default:?}, tail: {tail:?}");
