@@ -10,9 +10,8 @@ pub enum ClarityError {
     #[error("an unexpected error has occurred and no additionl information is available")]
     Undefined,
 
-    #[error("an error occurred while parsing a refined integer definition")]
-    RefinedIntegerParsingFailed,
-
+    //#[error("an error occurred while parsing a refined integer definition")]
+    //RefinedIntegerParsingFailed,
     #[error(
         "an error occurred while attempting to convert '{from:?}' to a ClarityInteger: {inner:?}"
     )]

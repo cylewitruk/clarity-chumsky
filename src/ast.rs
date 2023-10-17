@@ -1,5 +1,3 @@
-use internment::Intern;
-
 use crate::types::{ClarityInteger, RefinedInteger};
 
 #[derive(Debug, Clone)]
@@ -39,6 +37,7 @@ pub enum Define {
     PublicFunction(Box<FuncDef>),
     PrivateFunction(Box<FuncDef>),
     ReadOnlyFunction(Box<FuncDef>),
+    Tuple(TupleDef),
 }
 
 #[derive(Debug, Clone)]
@@ -87,8 +86,8 @@ pub enum Identifier {
 #[derive(Debug, Clone)]
 pub struct MapDef {
     pub name: String,
-    pub key_ty: Type,
-    pub val_ty: Type,
+    pub key_ty: Box<SExpr>,
+    pub val_ty: Box<SExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,17 +106,23 @@ pub enum FuncKind {
 #[derive(Debug, Clone)]
 pub struct FuncSignature {
     pub name: String,
-    pub args: Vec<FuncArg>,
+    pub args: Vec<ArgDef>,
 }
 
 #[derive(Debug, Clone)]
-pub struct FuncArg {
+pub struct ArgDef {
     pub name: String,
-    pub ty: Type,
+    pub ty: SExpr,
 }
 
 #[derive(Debug, Clone)]
 pub struct DefaultToDef {
     pub default: Box<SExpr>,
     pub tail: Box<SExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TupleDef {
+    pub name: String,
+    pub args: Vec<ArgDef>,
 }

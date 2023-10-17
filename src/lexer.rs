@@ -88,6 +88,8 @@ pub enum Token {
     Comment,
     #[regex(r"[ \t\f\n]+", logos::skip)]
     Whitespace,
+    #[token(",")]
+    Comma,
 
     // Optional/response
     #[token("default-to")]
@@ -566,6 +568,7 @@ impl fmt::Display for Token {
             Token::AsciiString(len) => write!(f, "<string-ascii {len}>"),
             Token::Utf8String(len) => write!(f, "<string-utf8 {len}>"),
             Token::Principal => write!(f, "<principal>"),
+            Token::Comma => write!(f, ","),
         }
     }
 }

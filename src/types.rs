@@ -66,7 +66,7 @@ lazy_static! {
 pub enum ClarityType {
     Bool,
     Integer(IntegerType),
-    RefinedInteger(RefinedInteger),
+    //RefinedInteger(RefinedInteger),
     CallableContract,
     Void,
 }

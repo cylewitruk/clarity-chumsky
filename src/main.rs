@@ -55,15 +55,15 @@ fn main() -> Result<()> {
 
     // Debug output
     let lexer = Token::lexer(source);
-    for token in lexer.into_iter() {
-        //let _ = dbg!(token).map_err(|e| println!("error: {e:?}"));
+    for _token in lexer.into_iter() {
+        //let _ = dbg!(_token).map_err(|e| println!("error: {e:?}"));
     }
 
     // ***************************
     // ** PARSING
     // ***************************
     let now = Instant::now();
-    let sexpr = parse(source, token_iter.into_iter())?;
+    let _sexpr = parse(source, token_iter.into_iter())?;
     let elapsed = Instant::now().duration_since(now);
     println!("parser elapsed: {:?}", elapsed);
 

@@ -12,7 +12,6 @@ bigint = "4.4.3"
 chumsky = { version = "1.0.0-alpha.6", features = ["label", "either", "regex"] }
 clap = { version = "4.4.6", features = ["derive"] }
 clarity = { path = "../../stacks-network/stacks-blockchain/clarity" }
-internment = "0.7.1"
 lazy_static = "1.4.0"
 logos = "0.13.0"
 num-bigint = "0.4.4"
