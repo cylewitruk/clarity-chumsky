@@ -14,6 +14,7 @@ use crate::{
 pub type Span = SimpleSpan<usize>;
 //pub type Spanned<T> = (T, Span);
 
+/// Struct whose impl holds generic parser implementations.
 struct Parsers<'a, I, O, E = extra::Err<Rich<'a, Token>>>
 where
     I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
@@ -24,10 +25,12 @@ where
 }
 
 impl<'a, I: ValueInput<'a, Token = Token, Span = SimpleSpan>> Parsers<'a, I, String> {
+    /// Parses identifier tokens to expressions.
     pub fn ident() -> impl Parser<'a, I, String, extra::Err<Rich<'a, Token>>> + Clone {
         select! { Token::Identifier(ident) => ident }.labelled("identifier")
     }
 
+    /// Parses literal tokens to expressions.
     pub fn literal() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone
     where
         I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
@@ -40,6 +43,7 @@ impl<'a, I: ValueInput<'a, Token = Token, Span = SimpleSpan>> Parsers<'a, I, Str
         .labelled("literal")
     }
 
+    /// Parses keyword tokens to expressions.
     pub fn keyword() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
         select! {
             Token::BlockHeight => SExpr::Keyword(Keyword::BlockHeight),
@@ -64,6 +68,7 @@ where
     I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
 {
     recursive(|expr| {
+        // default-to: (default-to default-value option-value)
         let default_to = just(Token::OpDefaultTo)
             .ignore_then(Parsers::literal())
             .then(expr.clone())
@@ -76,6 +81,7 @@ where
                 }))
             });
 
+        // map-get: (map-get? map-name key-tuple)
         let map_get = just(Token::OpMapGetOpt)
             .ignore_then(ident_parser())
             .then(Parsers::ident())
@@ -85,16 +91,19 @@ where
                 SExpr::Op(Op::MapGet)
             });
 
+        // map-set: (map-set map-name key-tuple value-tuple)
         let map_set = just(Token::OpMapSet)
             .ignore_then(Parsers::ident())
             .then(Parsers::literal().or(Parsers::keyword().or(expr.clone())))
             .then(Parsers::literal().or(Parsers::keyword().or(expr.clone())))
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|(map, key)| {
-                eprintln!("map-get?: {{ map: {map:?}, key: {key:?} }}");
+            .map(|((map, key), value)| {
+                eprintln!("map-set?: {{ map: {map:?}, key: {key:?}, value: {value:?} }}");
                 SExpr::Op(Op::MapSet)
             });
 
+        // ok: (ok value)
+        // err: (err value)
         let ok_err = one_of([Token::OpOk, Token::OpErr])
             .then(expr.clone())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
