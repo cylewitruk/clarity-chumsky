@@ -68,7 +68,7 @@ pub enum ClarityType {
     Integer(IntegerType),
     RefinedInteger(RefinedInteger),
     CallableContract,
-    Void
+    Void,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -82,7 +82,7 @@ pub enum IntegerType {
     I256,
     U256,
     I512,
-    U512
+    U512,
 }
 
 /// Enum variants for the different Clarity integer types.
@@ -127,7 +127,7 @@ pub enum Value {
     UInt(u128),
     Integer(ClarityInteger),
     CallableContract(CallableData),
-    Null
+    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,13 +145,6 @@ pub enum TryIntoClarityIntError {
     UIntCannotBeLessThanZero,
     FromBigInt(TryFromBigIntError<BigInt>),
     FromBigUInt(TryFromBigIntError<BigUint>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FunctionKind {
-    Public,
-    Private,
-    ReadOnly
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -4,25 +4,24 @@ use std::vec::IntoIter;
 use anyhow::bail;
 use anyhow::Result;
 pub(crate) use ariadne::{Color, Label, Report, ReportKind, Source};
+use ast::SExpr;
 use chumsky::input::Input;
 use chumsky::input::Stream;
 use chumsky::span::SimpleSpan;
 use chumsky::Parser;
-use ast::SExpr;
 use logos::Logos;
 
-use crate::source::*;
 use crate::lexer::Token;
+use crate::source::*;
 
+mod ast;
 mod errors;
 mod expressions;
+mod lexer;
 mod parser;
 mod source;
-mod lexer;
 mod types;
 mod value_ext;
-mod ast;
-mod signatures;
 
 fn main() -> Result<()> {
     //let source = CONTRACT_SRC;
@@ -72,8 +71,7 @@ fn main() -> Result<()> {
     // ** EVAL
     // ***************************
 
-    
-    for expr in sexpr {
+    /*for expr in sexpr {
         let now = Instant::now();
         match expr.eval() {
             Ok(out) => println!(
@@ -83,7 +81,7 @@ fn main() -> Result<()> {
             ),
             Err(err) => println!("eval runtime error: {}", err),
         }
-    }
+    }*/
 
     Ok(())
 }

@@ -6,7 +6,7 @@ use crate::types::{ClarityInteger, RefinedInteger};
 pub enum SExpr {
     Error,
 
-    Identifier(String),
+    Identifier(Box<Identifier>),
     RefinedInteger(RefinedInteger),
     Closure(Vec<Self>),
     Define(Define),
@@ -14,13 +14,6 @@ pub enum SExpr {
     TypeDef(Type),
     Literal(Literal),
     Keyword(Keyword),
-    Ctrl(Ctrl)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Ctrl {
-    StartOfContract,
-    EndOfContract
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -36,16 +29,16 @@ pub enum Keyword {
     StxLiquidSupply,
     True,
     TxSender,
-    TxSponsor
+    TxSponsor,
 }
 
 #[derive(Debug, Clone)]
 pub enum Define {
     Map(MapDef),
     DataVar,
-    PublicFunction,
-    PrivateFunction,
-    ReadOnlyFunction
+    PublicFunction(Box<FuncDef>),
+    PrivateFunction(Box<FuncDef>),
+    ReadOnlyFunction(Box<FuncDef>),
 }
 
 #[derive(Debug, Clone)]
@@ -56,7 +49,8 @@ pub enum Op {
     Div,
     DefaultTo(DefaultToDef),
     MapGet,
-    Ok,
+    Ok(Box<SExpr>),
+    Err(Box<SExpr>),
     MapSet,
 }
 
@@ -66,7 +60,7 @@ pub enum Literal {
     UInt,
     Integer(ClarityInteger),
     AsciiString(String),
-    Utf8String(String)
+    Utf8String(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -81,20 +75,33 @@ pub enum Type {
     List,
     Tuple,
     Optional,
-    Response
+    Response,
+}
+
+#[derive(Debug, Clone)]
+pub enum Identifier {
+    String(String),
+    Expr(SExpr),
 }
 
 #[derive(Debug, Clone)]
 pub struct MapDef {
     pub name: String,
     pub key_ty: Type,
-    pub val_ty: Type
+    pub val_ty: Type,
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncDef {
     pub signature: FuncSignature,
-    pub body: SExpr
+    pub body: SExpr,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FuncKind {
+    Public,
+    Private,
+    ReadOnly,
 }
 
 #[derive(Debug, Clone)]
@@ -106,11 +113,11 @@ pub struct FuncSignature {
 #[derive(Debug, Clone)]
 pub struct FuncArg {
     pub name: String,
-    pub ty: Type
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone)]
 pub struct DefaultToDef {
-    pub default: Literal,
-    pub tail: Box<SExpr>
+    pub default: Box<SExpr>,
+    pub tail: Box<SExpr>,
 }

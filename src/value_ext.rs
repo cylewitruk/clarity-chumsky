@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Result};
 
 use crate::{
     errors::ClarityError,
-    types::{ClarityType, IntegerType, Value, ClarityInteger},
+    types::{ClarityInteger, ClarityType, IntegerType, Value},
 };
 
 pub trait ValueExtensions {
@@ -19,12 +19,10 @@ impl ValueExtensions for Value {
         match (self, &value) {
             (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_add(*i2).unwrap())),
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_add(*i2).unwrap())),
-            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => {
-                a.checked_add(*b)
-                    .ok_or(anyhow!(ClarityError::Undefined))
-                    .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i))))
-
-            }
+            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
+                .checked_add(*b)
+                .ok_or(anyhow!(ClarityError::Undefined))
+                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -36,12 +34,10 @@ impl ValueExtensions for Value {
         match (self, &value) {
             (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_sub(*i2).unwrap())),
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_sub(*i2).unwrap())),
-            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => {
-                a.checked_sub(*b)
-                    .ok_or(anyhow!(ClarityError::Undefined))
-                    .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i))))
-
-            }
+            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
+                .checked_sub(*b)
+                .ok_or(anyhow!(ClarityError::Undefined))
+                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -53,12 +49,10 @@ impl ValueExtensions for Value {
         match (self, &value) {
             (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_div(*i2).unwrap())),
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_div(*i2).unwrap())),
-            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => {
-                a.checked_div(*b)
-                    .ok_or(anyhow!(ClarityError::Undefined))
-                    .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i))))
-
-            }
+            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
+                .checked_div(*b)
+                .ok_or(anyhow!(ClarityError::Undefined))
+                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -70,12 +64,10 @@ impl ValueExtensions for Value {
         match (self, &value) {
             (Value::Int(i), Value::Int(i2)) => Ok(Value::Int(i.checked_mul(*i2).unwrap())),
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_mul(*i2).unwrap())),
-            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => {
-                a.checked_mul(*b)
-                    .ok_or(anyhow!(ClarityError::Undefined))
-                    .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i))))
-
-            }
+            (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
+                .checked_mul(*b)
+                .ok_or(anyhow!(ClarityError::Undefined))
+                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -101,7 +93,7 @@ impl ValueExtensions for Value {
                 ClarityInteger::I512(_) => ClarityType::Integer(IntegerType::I512),
                 ClarityInteger::U512(_) => ClarityType::Integer(IntegerType::U512),
             },
-            Value::Null => ClarityType::Void
+            Value::Null => ClarityType::Void,
         }
     }
 }

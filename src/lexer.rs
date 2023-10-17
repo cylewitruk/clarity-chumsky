@@ -88,10 +88,6 @@ pub enum Token {
     Comment,
     #[regex(r"[ \t\f\n]+", logos::skip)]
     Whitespace,
-    #[token("![")]
-    ContractStart,
-    #[token("]!")]
-    ContractEnd,
 
     // Optional/response
     #[token("default-to")]
@@ -130,8 +126,7 @@ pub enum Token {
     DoubleQuote,
 
     // Types
-    #[regex(r"int\s+[-+]?[\d]+\s+[-+]?[\d]+",
-        callback = parse_refined_int_token)]
+    #[regex(r"int\s+[-+]?[\d]+\s+[-+]?[\d]+", callback = parse_refined_int_token)]
     RefinedInteger(RefinedInteger),
     #[token("uint")]
     UInt,
@@ -479,7 +474,7 @@ impl fmt::Display for Token {
             Token::OpErr => write!(f, "err"),
             Token::OpIsNone => write!(f, "is-none"),
             Token::OpIsSome => write!(f, "is-some"),
-            Token::OpOk => write!(f, "is-ok"),
+            Token::OpOk => write!(f, "ok"),
             Token::OpSome => write!(f, "is-some"),
             Token::OpHash160 => write!(f, "hash160"),
             Token::OpPow => write!(f, "pow"),
@@ -571,8 +566,6 @@ impl fmt::Display for Token {
             Token::AsciiString(len) => write!(f, "<string-ascii {len}>"),
             Token::Utf8String(len) => write!(f, "<string-utf8 {len}>"),
             Token::Principal => write!(f, "<principal>"),
-            Token::ContractStart => write!(f, "[start of contract]"),
-            Token::ContractEnd => write!(f, "[end of contract]")
         }
     }
 }
