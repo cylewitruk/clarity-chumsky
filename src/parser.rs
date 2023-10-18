@@ -267,28 +267,9 @@ mod test {
     #[test]
     fn my_test() {
         let src = "hello";
-        // Create a logos lexer over the source code
-        let token_iter: Vec<_> = Token::lexer(src)
-            .spanned()
-            // Convert logos errors into tokens. We want parsing to be recoverable and not fail at the lexing stage, so
-            // we have a dedicated `Token::Error` variant that represents a token error that was previously encountered
-            .map(|(tok, span)| match tok {
-                // Turn the `Range<usize>` spans logos gives us into chumsky's `SimpleSpan` via `Into`, because it's easier
-                // to work with
-                Ok(tok) => (
-                    tok,
-                    <std::ops::Range<usize> as Into<SimpleSpan>>::into(span),
-                ),
-                Err(_) => (Token::Error, span.into()),
-            })
-            .collect();
-
-        let token_stream = Stream::from_iter(token_iter)
-            // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
-            // This involves giving chumsky an 'end of input' span: we just use a zero-width span at the end of the string
-            .spanned((src.len()..src.len()).into());
-
-        Parse::arg().parse(token_stream);
+        
+        let token_stream = lex::<String>(src);
+        Parse::ident().parse(token_stream);
     }
 
     #[test]
@@ -317,11 +298,28 @@ mod test {
         Parse::arg().parse(token_stream);
     }
 
-    impl<'a, I: ValueInput<'a, Token = Token, Span = SimpleSpan> + Clone> Parse<'a, I, String> {
-        fn for_test<O>(input: I, parser: impl Parser<'a, I, O>) -> Result<O> {
-            let tmp = Parse::arg().parse(input.clone());
-            let tmp2 = parser.parse(input.clone());
-            todo!()
-        }
+    fn lex<O>(src: &str) -> SpannedInput<Token, SimpleSpan, Stream<std::vec::IntoIter<(Token, chumsky::span::SimpleSpan)>>>
+    {
+        let token_iter = Token::lexer(src)
+            .spanned()
+            .map(|(tok, span)| match tok {
+                Ok(tok) => (
+                    tok,
+                    <std::ops::Range<usize> as Into<SimpleSpan>>::into(span),
+                ),
+                Err(_) => (Token::Error, span.into()),
+            })
+            .collect::<Vec<_>>();
+
+        // Define 'end of input' span for optimized usage
+        let src_len = src.len();
+        let zero_width_span_at_end = (src_len..src_len).into();
+
+        let stream = Stream::from_iter(token_iter)
+            // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
+            // This involves giving chumsky an 'end of input' span: we just use a zero-width span at the end of the string
+            .spanned(zero_width_span_at_end);
+
+        stream
     }
 }
