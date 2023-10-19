@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Result};
 
 use crate::{
     errors::ClarityError,
-    types::{ClarityInteger, ClarityType, IntegerType, Value},
+    types::{ClarityInteger, ClarityType, IntegerType, Value}, ast::Op,
 };
 
 pub trait ValueExtensions {
@@ -21,8 +21,8 @@ impl ValueExtensions for Value {
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_add(*i2).unwrap())),
             (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
                 .checked_add(*b)
-                .ok_or(anyhow!(ClarityError::Undefined))
-                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
+                .ok_or(anyhow!(ClarityError::ArithmeticOverflow { op: Op::Add }))
+                .map(|i| Value::Integer(ClarityInteger::I128(i))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -36,8 +36,8 @@ impl ValueExtensions for Value {
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_sub(*i2).unwrap())),
             (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
                 .checked_sub(*b)
-                .ok_or(anyhow!(ClarityError::Undefined))
-                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
+                .ok_or(anyhow!(ClarityError::ArithmeticUnderflow { op: Op::Sub }))
+                .map(|i| Value::Integer(ClarityInteger::I128(i))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -51,8 +51,8 @@ impl ValueExtensions for Value {
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_div(*i2).unwrap())),
             (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
                 .checked_div(*b)
-                .ok_or(anyhow!(ClarityError::Undefined))
-                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
+                .ok_or(anyhow!(ClarityError::ArithmeticUnderflow { op: Op::Div }))
+                .map(|i| Value::Integer(ClarityInteger::I128(i))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()
@@ -66,8 +66,8 @@ impl ValueExtensions for Value {
             (Value::UInt(i), Value::UInt(i2)) => Ok(Value::UInt(i.checked_mul(*i2).unwrap())),
             (Value::Integer(ClarityInteger::I128(a)), Value::Integer(ClarityInteger::I128(b))) => a
                 .checked_mul(*b)
-                .ok_or(anyhow!(ClarityError::Undefined))
-                .and_then(|i| Ok(Value::Integer(ClarityInteger::I128(i)))),
+                .ok_or(anyhow!(ClarityError::ArithmeticOverflow { op: Op::Mul }))
+                .map(|i| Value::Integer(ClarityInteger::I128(i))),
             _ => bail!(ClarityError::TypeMismatch {
                 expected: self.ty(),
                 received: value.ty()

@@ -6,45 +6,56 @@ use crate::{
     ast::SExpr,
     ast::{
         ArgDef, DefaultToDef, Define, FuncDef, FuncKind, FuncSignature, Keyword, Literal, MapDef,
-        Op, TupleDef, Type, self,
+        Op, TupleDef, Type
     },
     lexer::Token,
 };
 
+// Aliases to help keep the code a little a little more sane.
 pub type Span = SimpleSpan<usize>;
-//pub type Spanned<T> = (T, Span);
 
-/// Struct whose impl holds generic parser implementations.
-struct Parse<'a, I, O, E = extra::Err<Rich<'a, Token>>>
+macro_rules! returns {
+    ($ty:ty) => {
+        impl Parser<'a, I, $ty, extra::Err<Rich<'a, Token<'a>, Span>>> + Clone
+    };
+}
+
+/// Struct whose impl holds general parser implementations.
+struct Parse<'a, I, O, E = extra::Err<Rich<'a, Token<'a>>>>
 where
-    I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     _phantom_input: &'a PhantomData<I>,
     _phantom_output: O,
     _phantom_extra: E,
 }
 
-impl<'a, I: ValueInput<'a, Token = Token, Span = SimpleSpan>> Parse<'a, I, String> {
+#[allow(dead_code)]
+impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, String> {
     /// Parses identifier tokens to expressions.
-    pub fn ident() -> impl Parser<'a, I, String, extra::Err<Rich<'a, Token>>> + Clone {
-        select! { Token::Identifier(ident) => ident }.labelled("identifier")
+    pub fn ident() -> returns!(String) {
+        select! { Token::Identifier(ident) => {
+                eprintln!("ident: {ident}");
+                ident.to_string() 
+            }
+        }.labelled("identifier")
     }
 
     /// Parses literal tokens to expressions.
-    pub fn literal() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone
+    pub fn literal() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token<'a>, Span>>> + Clone
     where
-        I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
+        I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
     {
         select! {
-            Token::LiteralAsciiString(str) => SExpr::Literal(Literal::AsciiString(str)),
-            Token::LiteralUtf8String(str) => SExpr::Literal(Literal::Utf8String(str)),
-            Token::LiteralInteger(int) => SExpr::Literal(Literal::Integer(int))
+            Token::AsciiString => SExpr::Literal(Literal::AsciiString("666".to_string())),
+            Token::Utf8String => SExpr::Literal(Literal::Utf8String("666".to_string())),
+            Token::Int => SExpr::Literal(Literal::Int)
         }
         .labelled("literal")
     }
 
     /// Parses keyword tokens to expressions.
-    pub fn keyword() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
+    pub fn keyword() -> returns!(SExpr) {
         select! {
             Token::BlockHeight => SExpr::Keyword(Keyword::BlockHeight),
             Token::BurnBlockHeight => SExpr::Keyword(Keyword::BurnBlockHeight),
@@ -62,27 +73,29 @@ impl<'a, I: ValueInput<'a, Token = Token, Span = SimpleSpan>> Parse<'a, I, Strin
     }
 
     /// Parses a single argument in the format (arg ty)
-    pub fn arg() -> impl Parser<'a, I, ArgDef, extra::Err<Rich<'a, Token, Span>>> + Clone {
+    pub fn arg() -> returns!(ArgDef) {
         Parse::ident()
             .then(Parse::ty())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
             .map(|(name, ty)| {
-                eprintln!("func_typedef: {name}->{ty:?}");
+                println!("arg(): {name}->{ty:?}");
                 ArgDef { name, ty }
             })
     }
 
     /// Parses multiple arguments in the format `(arg1 ty1) (arg2 ty2) ...`,
     /// at least `at_least` times and optionally at most `at_most` times.
-    pub fn args(at_least: usize, at_most: Option<usize>) -> impl Parser<'a, I, Vec<ArgDef>, extra::Err<Rich<'a, Token, Span>>> + Clone {
+    pub fn args(at_least: usize, at_most: Option<usize>) -> returns!(Vec<ArgDef>) {
         let mut parser = Parse::ident()
             .then(Parse::ty())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
             .map(|(name, ty)| {
-                eprintln!("func_typedef: {name}->{ty:?}");
+                eprintln!("args: {name}->{ty:?}");
                 ArgDef { name, ty }
             })
-            .separated_by(just(Token::Whitespace))
+            // Using `separated_by(just(Token::Whitespace))` doesn't work here
+            // because we've explicitly ignored whitespace in the Logos lexer.
+            .repeated()
             .at_least(at_least);
 
         if let Some(max) = at_most {
@@ -93,56 +106,65 @@ impl<'a, I: ValueInput<'a, Token = Token, Span = SimpleSpan>> Parse<'a, I, Strin
     }
 
     /// Parses type definitions.
-    pub fn ty() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
+    pub fn ty() -> returns!(SExpr) {
+        eprintln!("ty()");
         select! {
             Token::Int => SExpr::TypeDef(Type::Int),
             Token::UInt => SExpr::TypeDef(Type::UInt),
             Token::Principal => SExpr::TypeDef(Type::Principal)
-        }
-        .labelled("type")
+        }.labelled("type")
     }
 
     /// Explicit tuple definitions: (tuple (key0 expr0) (key1 expr1) ...)
-    fn tuple_explicit() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
+    fn tuple_def_explicit() -> returns!(Vec<ArgDef>) {
         just(Token::OpTuple)
-            .ignore_then(Self::ident())
-            .then(Self::args(2, Some(2)))
+            .ignore_then(
+                Parse::ident()
+                    .then(Parse::ty())
+                    .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                    .map(|(name, ty)| {
+                        eprintln!("args: {name}->{ty:?}");
+                        ArgDef { name, ty }
+                    })
+                    // Using `separated_by(just(Token::Whitespace))` doesn't work here
+                    // because we've explicitly ignored whitespace in the Logos lexer.
+                    .repeated()
+                    .collect()
+            )
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|(name, args)| {
-                eprintln!("tuple_def: {{ name: {name}, args: {args:?} }}");
-                SExpr::Define(Define::Tuple(TupleDef { name, args }))
+            .map(|x| {
+                println!("x: {x:?}");
+                x
             })
     }
 
     /// Parses implicit tuple definitions: { x: int, y: uint }
-    fn tuple_implicit() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
-        Self::ident()
-            .then(
-                Self::ident()
-                    .then(just(Token::Colon).ignored())
-                    .then(Self::ty())
-                    .map(|((name, _), ty)| ArgDef { name, ty })
-                    .separated_by(just(Token::Comma))
-                    .at_least(1)
-                    .collect::<Vec<_>>(),
-            )
-            .map(|(name, args)| {
-                eprintln!("tuple_def: {{ name: {name}, args: {args:?} }}");
-                SExpr::Define(Define::Tuple(TupleDef { name, args }))
+    fn tuple_implicit() -> returns!(Vec<ArgDef>) {
+        Parse::ident()
+            .then(just(Token::Colon).ignored())
+            .then(Parse::ty())
+            .map(|((name, _), ty)| {
+                eprintln!("arg: {{ name: {name}, type: {ty:?} }}");
+                ArgDef { name, ty }
             })
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .collect()
+            .delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
+
     }
 
-    /// Parses tuple definitions.
+    /* /// Parses tuple definitions.
     pub fn tuple() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
-        Self::tuple_explicit()
+        Self::tuple_def_explicit()
             .or(Self::tuple_implicit())
-    }
+    }*/
 }
 
 /// Parser for expressions
-fn expr_parser<'a, I>() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token>>> + Clone
+fn expr_parser<'a, I>() -> returns!(SExpr)
 where
-    I: ValueInput<'a, Token = Token, Span = SimpleSpan>,
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     recursive(|expr| {
         // default-to: (default-to default-value option-value)
@@ -203,10 +225,10 @@ where
 }
 
 /// Parser for a Clarity contract's top-level functions.
-pub fn top_level_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Vec<SExpr>, extra::Err<Rich<'tokens, Token, Span>>> + Clone
+pub fn top_level_parser<'a, I>(
+) -> returns!(Vec<SExpr>)
 where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     // Parses define-(public|private|readonly) operations and returns the
     // associated [`FuncKind`].
@@ -293,18 +315,102 @@ mod test {
         let src = "hello";
         
         let token_stream = src.lex();
-        let result = Parse::ident().parse(token_stream);
+        let result = Parse::ident()
+            .parse(token_stream)
+            .unwrap_report(src);
         
-        assert!(!result.has_errors());
-        assert_eq!(result.into_output(), Some(src.to_string()));
+        //assert!(!result.has_errors());
+        assert_eq!(result, src.to_string());
     }
 
     #[test]
-    fn tuple_explicit_def() {
-        let src = r#"(tuple (name "blockstack") (id 1337))"#;
+    fn arg_parse_unary() {
+        let src = "(hello uint)";
 
-        let result = Parse::tuple_explicit().parse(src.lex());
-        result.report(src);
+        let result = Parse::arg()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!("hello", result.name);
+        assert_eq!(SExpr::TypeDef(Type::UInt), result.ty);
+    }
+
+    #[test]
+    fn args_parse_binary() {
+        let src = "(hello uint) (world int)";
+
+        let result = Parse::args(2, Some(2))
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        // first arg
+        assert_eq!("hello", result[0].name);
+        assert_eq!(SExpr::TypeDef(Type::UInt), result[0].ty);
+        // second arg
+        assert_eq!("world", result[1].name);
+        assert_eq!(SExpr::TypeDef(Type::Int), result[1].ty);
+    }
+
+    #[test]
+    fn args_parse_variadic() {
+        let src = "(hello uint) (world int) (who principal)";
+
+        let result = Parse::args(1, None)
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        // first arg
+        assert_eq!("hello", result[0].name);
+        assert_eq!(SExpr::TypeDef(Type::UInt), result[0].ty);
+        // second arg
+        assert_eq!("world", result[1].name);
+        assert_eq!(SExpr::TypeDef(Type::Int), result[1].ty);
+        // third arg
+        assert_eq!("who", result[2].name);
+        assert_eq!(SExpr::TypeDef(Type::Principal), result[2].ty);
+    }
+
+    #[test]
+    fn tuple_explicit_def_single_entry() {
+        let src = r#"(tuple (x int))"#;
+
+        let result = Parse::tuple_def_explicit()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "x");
+        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+    }
+
+    #[test]
+    fn tuple_explicit_def_multiple_entries() {
+        let src = r#"(tuple (x int) (y uint) (z principal))"#;
+
+        let result = Parse::tuple_def_explicit()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result.len(), 3);
+        // first entry
+        assert_eq!(result[0].name, "x");
+        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+        // second entry
+        assert_eq!(result[1].name, "y");
+        assert_eq!(result[1].ty, SExpr::TypeDef(Type::UInt));
+        // third entry
+        assert_eq!(result[2].name, "z");
+        assert_eq!(result[2].ty, SExpr::TypeDef(Type::Principal));
+    }
+
+    #[test]
+    fn tuple_implicit_def_single_entry() {
+        let src = "{ x: int }"; // parser shouldn't have name since it can't be specified in this format
+
+        let result = Parse::tuple_implicit()
+            .parse(src.lex())
+            .unwrap_report(src);
+
         eprintln!("result: {result:?}");
     }
 
@@ -312,55 +418,75 @@ mod test {
     // CONVENIENCE HELPERS BELOW
     // *************************************************************************
 
-    type LexedInput = SpannedInput<
-        Token, 
+    /// Alias to help keep the code a little cleaner.
+    type LexedInput<'a> = SpannedInput<
+        Token<'a>, 
         SimpleSpan, 
-        Stream<std::vec::IntoIter<(Token, chumsky::span::SimpleSpan)>>
+        Stream<std::vec::IntoIter<(Token<'a>, chumsky::span::SimpleSpan)>>
     >;
 
-    trait TestParseResult {
-        fn report(&self, src: &str);
+    /// Test helper trait which can take a [ParseResult] and print out a report
+    /// to the console.
+    trait TestParseResult<O> {
+        fn unwrap_report(&self, src: &str) -> O;
     }
 
-    impl TestParseResult for ParseResult<SExpr, Rich<'_, Token>> {
-        fn report(&self, src: &str) {
-            if let Err(errs) = self.clone().into_result() {
-                    for err in errs {
-                        Report::build(ReportKind::Error, (), err.span().start)
-                            .with_code(3)
-                            .with_message(err.to_string())
-                            .with_label(
-                                Label::new(err.span().into_range())
-                                    .with_message(err.reason().to_string())
-                                    .with_color(Color::Red),
-                            )
-                            .finish()
-                            .print(ariadne::Source::from(src))
-                            .unwrap();
-                    }
-                    panic!("parsing failed")
+    /// Implement reporting for the standard [ParseResult]. This will write to
+    /// stdio so that it only shows when using `--capture-input` (i.e. not when
+    /// running a test batch).
+    impl<'a, O> TestParseResult<O> for ParseResult<O, Rich<'_, Token<'a>>> where O: Clone {
+        fn unwrap_report(&self, src: &str) -> O {
+            let result = self.clone().into_result();
+            if let Err(errs) = result {
+                for err in errs {
+                    Report::build(ReportKind::Error, (), err.span().start)
+                        .with_code(3)
+                        .with_message(err.to_string())
+                        .with_label(
+                            Label::new(err.span().into_range())
+                                .with_message(err.reason().to_string())
+                                .with_color(Color::Red),
+                        )
+                        .finish()
+                        .print(ariadne::Source::from(src))
+                        .unwrap();
+                }
+                panic!("parsing failed");
+            } else {
+                result.unwrap()
             }
         }
     }
 
+    /// Test helper trait to simplify lexing.
     trait Lex {
         fn lex(&self) -> LexedInput;
+        fn lex_unchecked(&self) -> LexedInput;
     }
 
+    /// Lexing for &str's.
     impl Lex for &str {
         fn lex(&self) -> LexedInput {
             lex(self)
         }
+        fn lex_unchecked(&self) -> LexedInput {
+            lex_unchecked(self)
+        }
     }
 
+    /// Lexing for Strings.
     impl Lex for String {
         fn lex(&self) -> LexedInput {
             lex(self)
         }
+        fn lex_unchecked(&self) -> LexedInput {
+            lex_unchecked(&self)
+        }
     }
 
-    fn lex(src: &str) -> LexedInput
-    {
+    /// Helper function for lexing Clarity source using Logos and converting it
+    /// into a spanned token stream input which Chumsky can understand.
+    fn lex(src: &str) -> LexedInput {
         let token_iter = Token::lexer(src)
             .spanned()
             .map(|(tok, span)| match tok {
@@ -372,15 +498,39 @@ mod test {
             })
             .collect::<Vec<_>>();
 
-        // Define 'end of input' span for optimized usage
+        // Define 'end of input' span for optimized usage. This basically just 
+        // creates a `Range(src.len(), src.len())`.
         let src_len = src.len();
         let zero_width_span_at_end = (src_len..src_len).into();
 
-        let stream = Stream::from_iter(token_iter)
+        Stream::from_iter(token_iter)
             // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
             // This involves giving chumsky an 'end of input' span: we just use a zero-width span at the end of the string
-            .spanned(zero_width_span_at_end);
+            .spanned(zero_width_span_at_end)
+    }
 
-        stream
+    fn lex_unchecked(src: &str) -> LexedInput {
+        let token_iter = Token::lexer(src)
+            .spanned()
+            .map(|(tok, span)| match tok {
+                Ok(tok) => (
+                    tok,
+                    <std::ops::Range<usize> as Into<SimpleSpan>>::into(span),
+                ),
+                Err(err) => { 
+                    panic!("lexing failed: {err:?}");
+                },
+            })
+            .collect::<Vec<_>>();
+
+        // Define 'end of input' span for optimized usage. This basically just 
+        // creates a `Range(src.len(), src.len())`.
+        let src_len = src.len();
+        let zero_width_span_at_end = (src_len..src_len).into();
+
+        Stream::from_iter(token_iter)
+            // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
+            // This involves giving chumsky an 'end of input' span: we just use a zero-width span at the end of the string
+            .spanned(zero_width_span_at_end)
     }
 }
