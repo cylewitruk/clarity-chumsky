@@ -1,5 +1,6 @@
 use crate::types::{ClarityInteger, RefinedInteger};
 
+/// Clarity expression types.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SExpr<'a> {
     Error,
@@ -8,12 +9,13 @@ pub enum SExpr<'a> {
     Closure(Vec<Self>),
     Define(Define<'a>),
     Op(Op<'a>),
-    TypeDef(Type),
+    TypeDef(Type<'a>),
     Literal(Literal<'a>),
     Keyword(Keyword),
     Tuple(Vec<ArgDef<'a>>),
 }
 
+/// Clarity keywords.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Keyword {
     BlockHeight,
@@ -30,6 +32,7 @@ pub enum Keyword {
     TxSponsor,
 }
 
+/// Clarity `define` statements.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Define<'a> {
     Map(MapDef<'a>),
@@ -40,6 +43,7 @@ pub enum Define<'a> {
     Tuple(TupleDef<'a>),
 }
 
+/// Clarity operations (functions).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op<'a> {
     Add,
@@ -53,6 +57,7 @@ pub enum Op<'a> {
     MapSet,
 }
 
+/// Clarity literals.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal<'a> {
     Int(i128),
@@ -63,8 +68,9 @@ pub enum Literal<'a> {
     Principal(&'a str),
 }
 
+/// Clarity type definitions.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Type {
+pub enum Type<'a> {
     Int,
     UInt,
     Bool,
@@ -72,18 +78,20 @@ pub enum Type {
     Buff,
     StringAscii(u32),
     StringUtf8(u32),
-    List,
+    List(u32, Box<SExpr<'a>>),
     Optional,
     Response,
     RefinedInteger(RefinedInteger),
 }
 
+/// Clarity identifiers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Identifier<'a> {
     String(&'a str),
     Expr(SExpr<'a>),
 }
 
+/// Clarity map definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapDef<'a> {
     pub name: &'a str,
@@ -91,12 +99,14 @@ pub struct MapDef<'a> {
     pub val_ty: Box<SExpr<'a>>,
 }
 
+/// Clarity function definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncDef<'a> {
     pub signature: FuncSignature<'a>,
     pub body: SExpr<'a>,
 }
 
+/// Clarity function kind (visibility).
 #[derive(Debug, Clone, PartialEq)]
 pub enum FuncKind {
     Public,
@@ -104,24 +114,28 @@ pub enum FuncKind {
     ReadOnly,
 }
 
+/// Clarity function signature (name and arguments, without the body).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncSignature<'a> {
     pub name: &'a str,
     pub args: Vec<ArgDef<'a>>,
 }
 
+/// Clarity argument definition (name + type).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArgDef<'a> {
     pub name: &'a str,
     pub ty: SExpr<'a>,
 }
 
+/// `default-to` definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefaultToDef<'a> {
     pub default: Box<SExpr<'a>>,
     pub tail: Box<SExpr<'a>>,
 }
 
+/// `tuple` definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TupleDef<'a> {
     pub name: &'a str,

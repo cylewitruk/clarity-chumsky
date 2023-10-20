@@ -107,7 +107,6 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             .then(Parse::ty())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
             .map(|(name, ty)| {
-                //eprintln!("args: {name}->{ty:?}");
                 ArgDef { name, ty }
             })
             // Using `separated_by(just(Token::Whitespace))` doesn't work here
@@ -144,7 +143,8 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                     match token {
                         Token::AsciiString => Ok(SExpr::TypeDef(Type::StringAscii(max_len))),
                         Token::Utf8String => Ok(SExpr::TypeDef(Type::StringUtf8(max_len))),
-                        _ => Err(Rich::custom(span, "BUG: should not"))
+                        // This should not be reachable since we're filtering on string-ascii & string-utf8 above.
+                        _ => Err(Rich::custom(span, "invalid type for string definition; should not reach this point."))
                     }
                 } else {
                     Err(Rich::custom(span, "max-len indicator for string-* declarations must be a positive integer"))
@@ -172,10 +172,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 Parse::ident()
                     .then(Parse::ty())
                     .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-                    .map(|(name, ty)| {
-                        //eprintln!("args: {name}->{ty:?}");
-                        ArgDef { name, ty }
-                    })
+                    .map(|(name, ty)| ArgDef { name, ty })
                     // Using `separated_by(just(Token::Whitespace))` doesn't work here
                     // because we've explicitly ignored whitespace in the Logos lexer.
                     .repeated()
@@ -190,10 +187,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         Parse::ident()
             .then(just(Token::Colon).ignored())
             .then(Parse::ty())
-            .map(|((name, _), ty)| {
-                //eprintln!("arg: {{ name: {name}, type: {ty:?} }}");
-                ArgDef { name, ty }
-            })
+            .map(|((name, _), ty)| ArgDef { name, ty })
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect()
@@ -206,66 +200,87 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         Self::tuple_def_explicit()
             .or(Self::tuple_implicit())
     }*/
-}
 
-/// Parser for expressions
-fn expr_parser<'a, I>() -> returns!(SExpr<'a>)
-where
-    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
-{
-    recursive(|expr| {
-        // default-to: (default-to default-value option-value)
-        let default_to = just(Token::OpDefaultTo)
-            .ignore_then(Parse::literal())
-            .then(expr.clone())
-            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|(default, tail)| {
-                eprintln!("default-to: {{ default: {default:?}, tail: {tail:?} }}");
-                SExpr::Op(Op::DefaultTo(DefaultToDef {
-                    default: Box::new(default),
-                    tail: Box::new(tail),
-                }))
-            });
+    /// Parser for expressions
+    fn expr() -> returns!(SExpr<'a>)
+    where
+        I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
+    {
+        recursive(|expr| {
+            let list = 
+                just(Token::OpList)
+                .ignore_then(
+                    Parse::literal_integer_as_clarity_integer()
+                    .try_map(|len, span| {
+                        if let ClarityInteger::U32(_) = len {
+                            Ok(len)
+                        } else { 
+                            Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
+                        }
+                    })
+                ).then(Parse::ty())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .try_map(|(max_len, ty), span| {
+                    if let ClarityInteger::U32(max_len) = max_len {
+                        Ok(SExpr::TypeDef(Type::List(max_len, Box::new(ty))))
+                    } else {
+                        Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
+                    }
+                });
 
-        // map-get: (map-get? map-name key-tuple)
-        let map_get = just(Token::OpMapGetOpt)
-            .ignore_then(Parse::ident())
-            .then(Parse::ident())
-            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|(map, key)| {
-                eprintln!("map-get?: {{ map: {map:?}, key: {key:?} }}");
-                SExpr::Op(Op::MapGet)
-            });
+            // default-to: (default-to default-value option-value)
+            let default_to = just(Token::OpDefaultTo)
+                .ignore_then(Parse::literal())
+                .then(expr.clone())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|(default, tail)| {
+                    SExpr::Op(Op::DefaultTo(DefaultToDef {
+                        default: Box::new(default),
+                        tail: Box::new(tail),
+                    }))
+                });
 
-        // map-set: (map-set map-name key-tuple value-tuple)
-        let map_set = just(Token::OpMapSet)
-            .ignore_then(Parse::ident())
-            .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
-            .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
-            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|((map, key), value)| {
-                eprintln!("map-set?: {{ map: {map:?}, key: {key:?}, value: {value:?} }}");
-                SExpr::Op(Op::MapSet)
-            });
+            // map-get: (map-get? map-name key-tuple)
+            let map_get = just(Token::OpMapGetOpt)
+                .ignore_then(Parse::ident())
+                .then(Parse::ident())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|(map, key)| {
+                    eprintln!("map-get?: {{ map: {map:?}, key: {key:?} }}");
+                    SExpr::Op(Op::MapGet)
+                });
 
-        // ok: (ok value)
-        // err: (err value)
-        let ok_err = one_of([Token::OpOk, Token::OpErr])
-            .then(expr.clone())
-            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|(token, tail)| {
-                let tail = Box::new(tail);
-                match token {
-                    Token::OpOk => SExpr::Op(Op::Ok(tail)),
-                    Token::OpErr => SExpr::Op(Op::Err(tail)),
-                    _ => unimplemented!(
-                        "bug: token '{token:?}' is not supported by this matching pattern."
-                    ),
-                }
-            });
+            // map-set: (map-set map-name key-tuple value-tuple)
+            let map_set = just(Token::OpMapSet)
+                .ignore_then(Parse::ident())
+                .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
+                .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|((map, key), value)| SExpr::Op(Op::MapSet)); // TODO: impl mapdef
 
-        default_to.or(map_get).or(map_set).or(ok_err)
-    })
+            // ok: (ok value)
+            // err: (err value)
+            let ok_err = one_of([Token::OpOk, Token::OpErr])
+                .then(expr.clone())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|(token, tail)| {
+                    let tail = Box::new(tail);
+                    match token {
+                        Token::OpOk => SExpr::Op(Op::Ok(tail)),
+                        Token::OpErr => SExpr::Op(Op::Err(tail)),
+                        _ => unimplemented!(
+                            "bug: token '{token:?}' is not supported by this matching pattern."
+                        ),
+                    }
+                });
+
+            default_to
+                .or(map_get)
+                .or(map_set)
+                .or(list)
+                .or(ok_err)
+        })
+    }
 }
 
 /// Parser for a Clarity contract's top-level functions.
@@ -287,29 +302,21 @@ where
     let func_typedef = Parse::ident()
         .then(Parse::ty())
         .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-        .map(|(name, ty)| {
-            eprintln!("func_typedef: {name}->{ty:?}");
-            ArgDef { name, ty }
-        });
+        .map(|(name, ty)| ArgDef { name, ty });
 
     // Parses a function's signature in the format `(<name> (arg1 ty1) (arg2 ty2) ...)`.
     // This parser is a helper parser for the `define_fn` parser below.
     let func_signature = Parse::ident()
         .then(func_typedef.repeated().collect::<Vec<_>>())
         .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-        .map(|(name, args)| {
-            eprintln!("func_signature: {name}->{args:?}");
-            FuncSignature { name, args }
-        });
+        .map(|(name, args)| FuncSignature { name, args });
 
     // Parses function definitions (public, private, readonly).
     let define_fn = func_visibility
         .then(func_signature)
-        .then(expr_parser())
+        .then(Parse::expr())
         .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
         .map(|((kind, sig), body)| {
-            eprintln!("define_fn:\nkind: {kind:?}\nsignature: {sig:?}\nbody: {body:?}\n");
-
             // Create the function definition.
             let func_def = Box::new(FuncDef {
                 signature: sig,
@@ -333,7 +340,6 @@ where
         .then(Parse::ty().labelled("value-type"))
         .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
         .map(|((name, key_ty), val_ty)| {
-            eprintln!("define-map {} {:?} {:?}", name, key_ty, val_ty);
             SExpr::Define(Define::Map(MapDef {
                 name,
                 key_ty: Box::new(key_ty),
@@ -352,6 +358,28 @@ mod test {
     use ariadne::{Color, Label, Report, ReportKind};
     use chumsky::input::{SpannedInput, Stream};
     use logos::*;
+
+    #[test]
+    fn list_sunny_day() {
+        let src = "(list 1 int)";
+
+        let result = Parse::expr()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result, SExpr::TypeDef(Type::List(1, Box::new(SExpr::TypeDef(Type::Int)))));
+    }
+
+    #[test]
+    fn list_fails_with_negative_len() {
+        let src = "(list -1 int)";
+
+        let result = Parse::expr()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result, SExpr::TypeDef(Type::List(1, Box::new(SExpr::TypeDef(Type::Int)))));
+    }
 
     #[test]
     fn string_ascii_ty_fails_on_negative_len() {
