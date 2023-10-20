@@ -5,7 +5,7 @@ use thiserror::Error;
 use crate::{types::{ClarityType, TryIntoClarityIntError}, ast::Op};
 
 #[derive(Error, Default, Debug, Clone, PartialEq)]
-pub enum ClarityError {
+pub enum ClarityError<'a> {
     #[default]
     #[error("an unexpected error has occurred and no additionl information is available")]
     Undefined,
@@ -24,9 +24,9 @@ pub enum ClarityError {
     ParseStringDefinition,
 
     #[error("arithmetic overflow occurred during execution of `{op:?}`")]
-    ArithmeticOverflow { op: Op },
+    ArithmeticOverflow { op: Op<'a> },
     #[error("arithmetic underflow occurred during execution of `{op:?}`")]
-    ArithmeticUnderflow { op: Op },
+    ArithmeticUnderflow { op: Op<'a> },
 
     #[error("an error occurred while attempting to parse an integer: {inner:?}")]
     ParseInt { inner: ParseIntError },

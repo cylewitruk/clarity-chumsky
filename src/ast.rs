@@ -1,18 +1,18 @@
 use crate::types::{ClarityInteger, RefinedInteger};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SExpr {
+pub enum SExpr<'a> {
     Error,
 
-    Identifier(Box<Identifier>),
+    Identifier(Box<Identifier<'a>>),
     RefinedInteger(RefinedInteger),
     Closure(Vec<Self>),
-    Define(Define),
-    Op(Op),
+    Define(Define<'a>),
+    Op(Op<'a>),
     TypeDef(Type),
-    Literal(Literal),
+    Literal(Literal<'a>),
     Keyword(Keyword),
-    Tuple(Vec<ArgDef>)
+    Tuple(Vec<ArgDef<'a>>)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -32,35 +32,36 @@ pub enum Keyword {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Define {
-    Map(MapDef),
+pub enum Define<'a> {
+    Map(MapDef<'a>),
     DataVar,
-    PublicFunction(Box<FuncDef>),
-    PrivateFunction(Box<FuncDef>),
-    ReadOnlyFunction(Box<FuncDef>),
-    Tuple(TupleDef),
+    PublicFunction(Box<FuncDef<'a>>),
+    PrivateFunction(Box<FuncDef<'a>>),
+    ReadOnlyFunction(Box<FuncDef<'a>>),
+    Tuple(TupleDef<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Op {
+pub enum Op<'a> {
     Add,
     Sub,
     Mul,
     Div,
-    DefaultTo(DefaultToDef),
+    DefaultTo(DefaultToDef<'a>),
     MapGet,
-    Ok(Box<SExpr>),
-    Err(Box<SExpr>),
+    Ok(Box<SExpr<'a>>),
+    Err(Box<SExpr<'a>>),
     MapSet,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Literal {
-    Int,
-    UInt,
+pub enum Literal<'a> {
+    Int(i128),
+    UInt(u128),
     Integer(ClarityInteger),
-    AsciiString(String),
-    Utf8String(String),
+    AsciiString(&'a str),
+    Utf8String(&'a str),
+    Principal(&'a str)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -78,22 +79,22 @@ pub enum Type {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Identifier {
-    String(String),
-    Expr(SExpr),
+pub enum Identifier<'a> {
+    String(&'a str),
+    Expr(SExpr<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MapDef {
-    pub name: String,
-    pub key_ty: Box<SExpr>,
-    pub val_ty: Box<SExpr>,
+pub struct MapDef<'a> {
+    pub name: &'a str,
+    pub key_ty: Box<SExpr<'a>>,
+    pub val_ty: Box<SExpr<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FuncDef {
-    pub signature: FuncSignature,
-    pub body: SExpr,
+pub struct FuncDef<'a> {
+    pub signature: FuncSignature<'a>,
+    pub body: SExpr<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,25 +105,25 @@ pub enum FuncKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FuncSignature {
-    pub name: String,
-    pub args: Vec<ArgDef>,
+pub struct FuncSignature<'a> {
+    pub name: &'a str,
+    pub args: Vec<ArgDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArgDef {
-    pub name: String,
-    pub ty: SExpr,
+pub struct ArgDef<'a> {
+    pub name: &'a str,
+    pub ty: SExpr<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DefaultToDef {
-    pub default: Box<SExpr>,
-    pub tail: Box<SExpr>,
+pub struct DefaultToDef<'a> {
+    pub default: Box<SExpr<'a>>,
+    pub tail: Box<SExpr<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TupleDef {
-    pub name: String,
-    pub args: Vec<ArgDef>,
+pub struct TupleDef<'a> {
+    pub name: &'a str,
+    pub args: Vec<ArgDef<'a>>,
 }

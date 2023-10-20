@@ -1,12 +1,38 @@
 use std::fmt;
 
-use logos::Logos;
+use logos::{Logos, Lexer};
 
 use crate::errors::ClarityError;
 
+/// Removes surrounding quotes from an ASCII string literal token.
+fn literal_ascii_string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
+    lex.slice().trim_matches('"')
+}
+
+/// Removes `u` unsigned indicator and surrounding quotes from a UTF8 string
+/// literal token.
+fn literal_utf8_string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
+    lex.slice().trim_start_matches('u').trim_matches('"')
+}
+
+/// Parses a numeric literal into an `i128`.
+fn literal_int<'a>(lex: &mut Lexer<'a, Token<'a>>) -> i128 {
+    lex.slice().parse::<i128>().unwrap()
+}
+
+/// Removes `u` unsigned indicator and parses the numeric literal into an `u128`.
+fn literal_uint<'a>(lex: &mut Lexer<'a, Token<'a>>) -> u128 {
+    lex.slice().trim_start_matches('u').parse::<u128>().unwrap()
+}
+
+/// Removes the preceeding `'` from a principal literal.
+fn literal_principal<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
+    lex.slice().trim_start_matches("'")
+}
+
 /// Enum of all tokens in the Clarity language.
 #[derive(Logos, Clone, Debug, PartialEq)]
-#[logos(error = ClarityError)]
+#[logos(error = ClarityError<'s>)]
 pub enum Token<'a> {
     Error,
 
@@ -28,14 +54,20 @@ pub enum Token<'a> {
     OpSome,
 
     // Literals
-    #[regex("u[0-9]+", priority = 2 )]
-    LiteralUInt,
-    #[regex("[0-9]+")]
-    LiteralInt,
+    #[regex("u[0-9]+", priority = 2, callback = literal_uint)]
+    LiteralUInt(u128),
+    #[regex("[0-9]+", callback = literal_int)]
+    LiteralInt(i128),
     #[regex("0b[01]+")]
     LiteralBinary,
     #[regex("0x[0-9a-fA-F]+")]
     LiteralHex,
+    #[regex(r#""[^"]*""#, callback = literal_ascii_string)]
+    LiteralAsciiString(&'a str),
+    #[regex(r#"u"[^"]*""#, callback = literal_utf8_string)]
+    LiteralUtf8String(&'a str),
+    #[regex("'ST[A-Z0-9]{39}", callback = literal_principal)]
+    LiteralPrincipal(&'a str),
     #[token("(")]
     ParenOpen,
     #[token(")")]
@@ -480,8 +512,8 @@ impl fmt::Display for Token<'_> {
             Token::True => write!(f, "true"),
             Token::TxSender => write!(f, "tx-sender"),
             Token::TxSponsorOpt => write!(f, "tx-sponsor?"),
-            Token::LiteralInt => write!(f, "<int>"),
-            Token::LiteralUInt => write!(f, "<uint>"),
+            Token::LiteralInt(i) => write!(f, "<int: {i}>"),
+            Token::LiteralUInt(i) => write!(f, "<uint: {i}>"),
             Token::Colon => write!(f, ":"),
             Token::SingleQuote => write!(f, "'"),
             Token::DoubleQuote => write!(f, "\""),
@@ -489,6 +521,9 @@ impl fmt::Display for Token<'_> {
             Token::Utf8String => write!(f, "<string-utf8>"),
             Token::Principal => write!(f, "<principal>"),
             Token::Comma => write!(f, ","),
+            Token::LiteralAsciiString(str) => write!(f, "<ascii> \"{str}\""),
+            Token::LiteralUtf8String(str) => write!(f, "<utf8> \"{str}\""),
+            Token::LiteralPrincipal(str) => write!(f, "<principal: \"{str}\""),
         }
     }
 }

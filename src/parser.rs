@@ -6,7 +6,7 @@ use crate::{
     ast::SExpr,
     ast::{
         ArgDef, DefaultToDef, Define, FuncDef, FuncKind, FuncSignature, Keyword, Literal, MapDef,
-        Op, TupleDef, Type
+        Op, Type
     },
     lexer::Token,
 };
@@ -33,29 +33,31 @@ where
 #[allow(dead_code)]
 impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, String> {
     /// Parses identifier tokens to expressions.
-    pub fn ident() -> returns!(String) {
+    pub fn ident() -> returns!(&'a str) {
         select! { Token::Identifier(ident) => {
-                eprintln!("ident: {ident}");
-                ident.to_string() 
+                //eprintln!("ident: {ident}");
+                ident
             }
         }.labelled("identifier")
     }
 
     /// Parses literal tokens to expressions.
-    pub fn literal() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token<'a>, Span>>> + Clone
+    pub fn literal() -> impl Parser<'a, I, SExpr<'a>, extra::Err<Rich<'a, Token<'a>, Span>>> + Clone
     where
         I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
     {
         select! {
-            Token::AsciiString => SExpr::Literal(Literal::AsciiString("666".to_string())),
-            Token::Utf8String => SExpr::Literal(Literal::Utf8String("666".to_string())),
-            Token::Int => SExpr::Literal(Literal::Int)
+            Token::LiteralAsciiString(str) => SExpr::Literal(Literal::AsciiString(str)),
+            Token::LiteralUtf8String(str) => SExpr::Literal(Literal::Utf8String(str)),
+            Token::LiteralInt(i) => SExpr::Literal(Literal::Int(i)),
+            Token::LiteralUInt(i) => SExpr::Literal(Literal::UInt(i)),
+            Token::LiteralPrincipal(str) => SExpr::Literal(Literal::Principal(str))
         }
         .labelled("literal")
     }
 
     /// Parses keyword tokens to expressions.
-    pub fn keyword() -> returns!(SExpr) {
+    pub fn keyword() -> returns!(SExpr<'a>) {
         select! {
             Token::BlockHeight => SExpr::Keyword(Keyword::BlockHeight),
             Token::BurnBlockHeight => SExpr::Keyword(Keyword::BurnBlockHeight),
@@ -69,28 +71,28 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             Token::True => SExpr::Keyword(Keyword::True),
             Token::TxSender => SExpr::Keyword(Keyword::TxSender),
             Token::TxSponsorOpt => SExpr::Keyword(Keyword::TxSponsor),
-        }
+        }.labelled("keyword")
     }
 
     /// Parses a single argument in the format (arg ty)
-    pub fn arg() -> returns!(ArgDef) {
+    pub fn arg() -> returns!(ArgDef<'a>) {
         Parse::ident()
             .then(Parse::ty())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
             .map(|(name, ty)| {
-                println!("arg(): {name}->{ty:?}");
+                //println!("arg(): {name}->{ty:?}");
                 ArgDef { name, ty }
-            })
+            }).labelled("argument")
     }
 
     /// Parses multiple arguments in the format `(arg1 ty1) (arg2 ty2) ...`,
     /// at least `at_least` times and optionally at most `at_most` times.
-    pub fn args(at_least: usize, at_most: Option<usize>) -> returns!(Vec<ArgDef>) {
+    pub fn args(at_least: usize, at_most: Option<usize>) -> returns!(Vec<ArgDef<'a>>) {
         let mut parser = Parse::ident()
             .then(Parse::ty())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
             .map(|(name, ty)| {
-                eprintln!("args: {name}->{ty:?}");
+                //eprintln!("args: {name}->{ty:?}");
                 ArgDef { name, ty }
             })
             // Using `separated_by(just(Token::Whitespace))` doesn't work here
@@ -102,28 +104,29 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             parser = parser.at_most(max)
         }
 
-        parser.collect::<Vec<_>>()
+        parser.collect::<Vec<_>>().labelled("arguments")
     }
 
     /// Parses type definitions.
-    pub fn ty() -> returns!(SExpr) {
-        eprintln!("ty()");
-        select! {
+    pub fn ty() -> returns!(SExpr<'a>) {
+        let simple_types = select! {
             Token::Int => SExpr::TypeDef(Type::Int),
             Token::UInt => SExpr::TypeDef(Type::UInt),
             Token::Principal => SExpr::TypeDef(Type::Principal)
-        }.labelled("type")
+        };
+
+        simple_types
     }
 
-    /// Explicit tuple definitions: (tuple (key0 expr0) (key1 expr1) ...)
-    fn tuple_def_explicit() -> returns!(Vec<ArgDef>) {
+    /// Explicit tuple definitions: (tuple (key0 type0) (key1 type1) ...)
+    fn tuple_def_explicit() -> returns!(Vec<ArgDef<'a>>) {
         just(Token::OpTuple)
             .ignore_then(
                 Parse::ident()
                     .then(Parse::ty())
                     .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
                     .map(|(name, ty)| {
-                        eprintln!("args: {name}->{ty:?}");
+                        //eprintln!("args: {name}->{ty:?}");
                         ArgDef { name, ty }
                     })
                     // Using `separated_by(just(Token::Whitespace))` doesn't work here
@@ -132,26 +135,23 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                     .collect()
             )
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|x| {
-                println!("x: {x:?}");
-                x
-            })
+            .labelled("tuple definition")
     }
 
-    /// Parses implicit tuple definitions: { x: int, y: uint }
-    fn tuple_implicit() -> returns!(Vec<ArgDef>) {
+    /// Parses implicit tuple definitions: { key0: type0, key1: type1 }
+    fn tuple_def_implicit() -> returns!(Vec<ArgDef<'a>>) {
         Parse::ident()
             .then(just(Token::Colon).ignored())
             .then(Parse::ty())
             .map(|((name, _), ty)| {
-                eprintln!("arg: {{ name: {name}, type: {ty:?} }}");
+                //eprintln!("arg: {{ name: {name}, type: {ty:?} }}");
                 ArgDef { name, ty }
             })
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect()
             .delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
-
+            .labelled("tuple definition")
     }
 
     /* /// Parses tuple definitions.
@@ -162,7 +162,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
 }
 
 /// Parser for expressions
-fn expr_parser<'a, I>() -> returns!(SExpr)
+fn expr_parser<'a, I>() -> returns!(SExpr<'a>)
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -226,7 +226,7 @@ where
 
 /// Parser for a Clarity contract's top-level functions.
 pub fn top_level_parser<'a, I>(
-) -> returns!(Vec<SExpr>)
+) -> returns!(Vec<SExpr<'a>>)
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -311,6 +311,50 @@ mod test {
     use logos::*;
 
     #[test]
+    fn literal_ascii_string() {
+        let src = r#"" he l lo worl d!""#;
+        
+        let result = Parse::literal()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result, SExpr::Literal(Literal::AsciiString(" he l lo worl d!")));
+    }
+
+    #[test]
+    fn literal_utf8_string() {
+        let src = r#"u" he l lo worl d!""#;
+        
+        let result = Parse::literal()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result, SExpr::Literal(Literal::Utf8String(" he l lo worl d!")));
+    }
+
+    #[test]
+    fn literal_int() {
+        let src = "  12345 ";
+
+        let result = Parse::literal()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result, SExpr::Literal(Literal::Int(12345)));
+    }
+
+    #[test]
+    fn literal_uint() {
+        let src = "  u12345 ";
+
+        let result = Parse::literal()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result, SExpr::Literal(Literal::UInt(12345)));
+    }
+
+    #[test]
     fn ident_single_token() {
         let src = "hello";
         
@@ -385,7 +429,7 @@ mod test {
 
     #[test]
     fn tuple_explicit_def_multiple_entries() {
-        let src = r#"(tuple (x int) (y uint) (z principal))"#;
+        let src = "(tuple (x int) (y uint) (z principal))";
 
         let result = Parse::tuple_def_explicit()
             .parse(src.lex())
@@ -407,16 +451,39 @@ mod test {
     fn tuple_implicit_def_single_entry() {
         let src = "{ x: int }"; // parser shouldn't have name since it can't be specified in this format
 
-        let result = Parse::tuple_implicit()
+        let result = Parse::tuple_def_implicit()
             .parse(src.lex())
             .unwrap_report(src);
 
-        eprintln!("result: {result:?}");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "x");
+        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+    }
+
+    #[test]
+    fn tuple_implicit_def_multiple_entries() {
+        let src = "{ x: int, y: uint, z: principal }";
+
+        let result = Parse::tuple_def_implicit()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(result.len(), 3);
+        // first entry
+        assert_eq!(result[0].name, "x");
+        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+        // second entry
+        assert_eq!(result[1].name, "y");
+        assert_eq!(result[1].ty, SExpr::TypeDef(Type::UInt));
+        // third entry
+        assert_eq!(result[2].name, "z");
+        assert_eq!(result[2].ty, SExpr::TypeDef(Type::Principal));
     }
 
     // *************************************************************************
     // CONVENIENCE HELPERS BELOW
     // *************************************************************************
+    /* #region Test Helpers */
 
     /// Alias to help keep the code a little cleaner.
     type LexedInput<'a> = SpannedInput<
@@ -480,7 +547,7 @@ mod test {
             lex(self)
         }
         fn lex_unchecked(&self) -> LexedInput {
-            lex_unchecked(&self)
+            lex_unchecked(self)
         }
     }
 
@@ -533,4 +600,6 @@ mod test {
             // This involves giving chumsky an 'end of input' span: we just use a zero-width span at the end of the string
             .spanned(zero_width_span_at_end)
     }
+
+    /* #endregion */
 }

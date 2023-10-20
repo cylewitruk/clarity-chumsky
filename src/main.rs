@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse(source: &str, token_iter: IntoIter<(Token, SimpleSpan)>) -> Result<Vec<SExpr>> {
+fn parse<'src>(source: &'src str, token_iter: IntoIter<(Token<'src>, SimpleSpan)>) -> Result<Vec<SExpr<'src>>> {
     // Turn the token iterator into a stream that chumsky can use for things like backtracking
     let token_stream = Stream::from_iter(token_iter)
         // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us
