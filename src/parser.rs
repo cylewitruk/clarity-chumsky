@@ -374,11 +374,11 @@ mod test {
     fn list_fails_with_negative_len() {
         let src = "(list -1 int)";
 
-        let result = Parse::expr()
+        Parse::expr()
             .parse(src.lex())
-            .unwrap_report(src);
-
-        assert_eq!(result, SExpr::TypeDef(Type::List(1, Box::new(SExpr::TypeDef(Type::Int)))));
+            .assert_failed()
+            .assert_error_count(1)
+            .assert_errors_contains("max-len indicator for list declarations must be greater than zero.");
     }
 
     #[test]
