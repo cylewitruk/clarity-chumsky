@@ -2,7 +2,10 @@ use std::num::ParseIntError;
 
 use thiserror::Error;
 
-use crate::{types::{ClarityType, TryIntoClarityIntError}, ast::Op};
+use crate::{
+    ast::Op,
+    types::{ClarityType, TryIntoClarityIntError},
+};
 
 #[derive(Error, Default, Debug, Clone, PartialEq)]
 pub enum ClarityError<'a> {
@@ -20,7 +23,9 @@ pub enum ClarityError<'a> {
         inner: TryIntoClarityIntError,
     },
 
-    #[error("an error occurred while trying to parse a `string-ascii` or `string-utf8` definition")]
+    #[error(
+        "an error occurred while trying to parse a `string-ascii` or `string-utf8` definition"
+    )]
     ParseStringDefinition,
 
     #[error("arithmetic overflow occurred during execution of `{op:?}`")]

@@ -1,3 +1,6 @@
+// TODO: Remove this
+#![allow(dead_code)]
+
 use std::time::Instant;
 use std::vec::IntoIter;
 
@@ -29,7 +32,7 @@ fn main() -> Result<()> {
     let source = COUNTER_SRC;
     //let source = DEFINE_MAP_SRC;
 
-    let source = &format!("{source}");
+    //let source = &format!("{source}");
 
     // ***************************
     // ** LEXING
@@ -86,7 +89,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse<'src>(source: &'src str, token_iter: IntoIter<(Token<'src>, SimpleSpan)>) -> Result<Vec<SExpr<'src>>> {
+fn parse<'src>(
+    source: &'src str,
+    token_iter: IntoIter<(Token<'src>, SimpleSpan)>,
+) -> Result<Vec<SExpr<'src>>> {
     // Turn the token iterator into a stream that chumsky can use for things like backtracking
     let token_stream = Stream::from_iter(token_iter)
         // Tell chumsky to split the (Token, SimpleSpan) stream into its parts so that it can handle the spans for us

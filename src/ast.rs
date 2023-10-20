@@ -5,14 +5,13 @@ pub enum SExpr<'a> {
     Error,
 
     Identifier(Box<Identifier<'a>>),
-    RefinedInteger(RefinedInteger),
     Closure(Vec<Self>),
     Define(Define<'a>),
     Op(Op<'a>),
     TypeDef(Type),
     Literal(Literal<'a>),
     Keyword(Keyword),
-    Tuple(Vec<ArgDef<'a>>)
+    Tuple(Vec<ArgDef<'a>>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -61,7 +60,7 @@ pub enum Literal<'a> {
     Integer(ClarityInteger),
     AsciiString(&'a str),
     Utf8String(&'a str),
-    Principal(&'a str)
+    Principal(&'a str),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +75,7 @@ pub enum Type {
     List,
     Optional,
     Response,
+    RefinedInteger(RefinedInteger),
 }
 
 #[derive(Debug, Clone, PartialEq)]

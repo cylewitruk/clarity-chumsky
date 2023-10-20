@@ -1,8 +1,8 @@
 use std::fmt;
 
-use logos::{Logos, Lexer};
+use logos::{Lexer, Logos};
 
-use crate::errors::ClarityError;
+use crate::{errors::ClarityError, types::ClarityInteger};
 
 /// Removes surrounding quotes from an ASCII string literal token.
 fn literal_ascii_string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
@@ -15,19 +15,23 @@ fn literal_utf8_string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
     lex.slice().trim_start_matches('u').trim_matches('"')
 }
 
-/// Parses a numeric literal into an `i128`.
-fn literal_int<'a>(lex: &mut Lexer<'a, Token<'a>>) -> i128 {
-    lex.slice().parse::<i128>().unwrap()
-}
-
-/// Removes `u` unsigned indicator and parses the numeric literal into an `u128`.
-fn literal_uint<'a>(lex: &mut Lexer<'a, Token<'a>>) -> u128 {
-    lex.slice().trim_start_matches('u').parse::<u128>().unwrap()
-}
-
 /// Removes the preceeding `'` from a principal literal.
 fn literal_principal<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
-    lex.slice().trim_start_matches("'")
+    lex.slice().trim_start_matches('\'')
+}
+
+/// Parses a numeric literal into an `i128`.
+fn literal_integer<'a>(lex: &mut Lexer<'a, Token<'a>>) -> ClarityInteger {
+    let mut str = lex.slice();
+
+    // Determine what kind of integer literal we've got. We will always use
+    // the smallest integer type available for the given number.
+    let unsigned = str.starts_with('u') && !str.starts_with('-');
+    if unsigned {
+        str = str.trim_start_matches('u');
+    }
+
+    str.try_into().unwrap()
 }
 
 /// Enum of all tokens in the Clarity language.
@@ -54,10 +58,8 @@ pub enum Token<'a> {
     OpSome,
 
     // Literals
-    #[regex("u[0-9]+", priority = 2, callback = literal_uint)]
-    LiteralUInt(u128),
-    #[regex("[0-9]+", callback = literal_int)]
-    LiteralInt(i128),
+    #[regex("[u-]?[0-9]+", priority = 2, callback = literal_integer)]
+    LiteralInteger(ClarityInteger),
     #[regex("0b[01]+")]
     LiteralBinary,
     #[regex("0x[0-9a-fA-F]+")]
@@ -512,8 +514,7 @@ impl fmt::Display for Token<'_> {
             Token::True => write!(f, "true"),
             Token::TxSender => write!(f, "tx-sender"),
             Token::TxSponsorOpt => write!(f, "tx-sponsor?"),
-            Token::LiteralInt(i) => write!(f, "<int: {i}>"),
-            Token::LiteralUInt(i) => write!(f, "<uint: {i}>"),
+            Token::LiteralInteger(i) => write!(f, "<integer: {i}>"),
             Token::Colon => write!(f, ":"),
             Token::SingleQuote => write!(f, "'"),
             Token::DoubleQuote => write!(f, "\""),

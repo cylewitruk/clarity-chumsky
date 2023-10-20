@@ -1,8 +1,9 @@
 use anyhow::{anyhow, bail, Result};
 
 use crate::{
+    ast::Op,
     errors::ClarityError,
-    types::{ClarityInteger, ClarityType, IntegerType, Value}, ast::Op,
+    types::{ClarityInteger, ClarityType, IntegerType, Value},
 };
 
 pub trait ValueExtensions {

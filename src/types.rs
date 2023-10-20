@@ -159,39 +159,39 @@ impl RefinedInteger {
     }
 }
 
-impl Into<ClarityInteger> for i32 {
-    fn into(self) -> ClarityInteger {
-        ClarityInteger::I32(self)
+impl From<i32> for ClarityInteger {
+    fn from(val: i32) -> Self {
+        ClarityInteger::I32(val)
     }
 }
 
-impl Into<ClarityInteger> for u32 {
-    fn into(self) -> ClarityInteger {
-        ClarityInteger::U32(self)
+impl From<u32> for ClarityInteger {
+    fn from(val: u32) -> Self {
+        ClarityInteger::U32(val)
     }
 }
 
-impl Into<ClarityInteger> for i64 {
-    fn into(self) -> ClarityInteger {
-        ClarityInteger::I64(self)
+impl From<i64> for ClarityInteger {
+    fn from(val: i64) -> Self {
+        ClarityInteger::I64(val)
     }
 }
 
-impl Into<ClarityInteger> for u64 {
-    fn into(self) -> ClarityInteger {
-        ClarityInteger::U64(self)
+impl From<u64> for ClarityInteger {
+    fn from(val: u64) -> Self {
+        ClarityInteger::U64(val)
     }
 }
 
-impl Into<ClarityInteger> for i128 {
-    fn into(self) -> ClarityInteger {
-        ClarityInteger::I128(self)
+impl From<i128> for ClarityInteger {
+    fn from(val: i128) -> Self {
+        ClarityInteger::I128(val)
     }
 }
 
-impl Into<ClarityInteger> for u128 {
-    fn into(self) -> ClarityInteger {
-        ClarityInteger::U128(self)
+impl From<u128> for ClarityInteger {
+    fn from(val: u128) -> Self {
+        ClarityInteger::U128(val)
     }
 }
 
@@ -202,11 +202,11 @@ impl TryInto<ClarityInteger> for &str {
         if self.chars().nth(0) == Some('-') {
             let bint = BigInt::parse_bytes(self.as_bytes(), 10);
             let result: ClarityInteger = bint.try_into()?;
-            return Ok(result);
+            Ok(result)
         } else {
             let bint = BigUint::parse_bytes(self.as_bytes(), 10);
             let result: ClarityInteger = bint.try_into()?;
-            return Ok(result);
+            Ok(result)
         }
     }
 }
@@ -218,17 +218,17 @@ impl TryInto<ClarityInteger> for BigInt {
         if self >= i32::MIN.into() && self <= i32::MAX.into() {
             let val: i32 = self
                 .try_into()
-                .map_err(|e| TryIntoClarityIntError::FromBigInt(e))?;
+                .map_err(TryIntoClarityIntError::FromBigInt)?;
             Ok(ClarityInteger::I32(val))
         } else if self >= i64::MIN.into() && self <= i64::MAX.into() {
             let val: i64 = self
                 .try_into()
-                .map_err(|e| TryIntoClarityIntError::FromBigInt(e))?;
+                .map_err(TryIntoClarityIntError::FromBigInt)?;
             Ok(ClarityInteger::I64(val))
         } else if self >= i128::MIN.into() && self <= i128::MAX.into() {
             let val: i128 = self
                 .try_into()
-                .map_err(|e| TryIntoClarityIntError::FromBigInt(e))?;
+                .map_err(TryIntoClarityIntError::FromBigInt)?;
             Ok(ClarityInteger::I128(val))
         } else if self >= *I256_MIN && self <= *I256_MAX {
             Ok(ClarityInteger::I256(self))
@@ -248,7 +248,7 @@ impl TryInto<ClarityInteger> for Option<BigUint> {
             let x: ClarityInteger = val.try_into()?;
             return Ok(x);
         }
-        return Err(TryIntoClarityIntError::UIntCannotBeLessThanZero);
+        Err(TryIntoClarityIntError::UIntCannotBeLessThanZero)
     }
 }
 
@@ -260,7 +260,7 @@ impl TryInto<ClarityInteger> for Option<BigInt> {
             let x: ClarityInteger = val.try_into()?;
             return Ok(x);
         }
-        return Err(TryIntoClarityIntError::UIntCannotBeLessThanZero);
+        Err(TryIntoClarityIntError::UIntCannotBeLessThanZero)
     }
 }
 
@@ -275,17 +275,17 @@ impl TryInto<ClarityInteger> for BigUint {
         if self >= 0u8.into() && self <= u32::MAX.into() {
             let val: u32 = self
                 .try_into()
-                .map_err(|e| TryIntoClarityIntError::FromBigUInt(e))?;
+                .map_err(TryIntoClarityIntError::FromBigUInt)?;
             Ok(ClarityInteger::U32(val))
         } else if self >= 0u8.into() && self <= u64::MAX.into() {
             let val: u64 = self
                 .try_into()
-                .map_err(|e| TryIntoClarityIntError::FromBigUInt(e))?;
+                .map_err(TryIntoClarityIntError::FromBigUInt)?;
             Ok(ClarityInteger::U64(val))
         } else if self >= 0u8.into() && self <= u128::MAX.into() {
             let val: u128 = self
                 .try_into()
-                .map_err(|e| TryIntoClarityIntError::FromBigUInt(e))?;
+                .map_err(TryIntoClarityIntError::FromBigUInt)?;
             Ok(ClarityInteger::U128(val))
         } else if self >= 0u8.into() && self <= *U256_MAX {
             Ok(ClarityInteger::U256(self))
@@ -303,23 +303,15 @@ impl TryInto<i32> for ClarityInteger {
     fn try_into(self) -> Result<i32, Self::Error> {
         match self {
             ClarityInteger::I32(i) => Ok(i),
-            ClarityInteger::U32(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::U64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::U128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
+            ClarityInteger::U32(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::U64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::U128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
         }
     }
 }
@@ -329,24 +321,16 @@ impl TryInto<u32> for ClarityInteger {
 
     fn try_into(self) -> Result<u32, Self::Error> {
         match self {
-            ClarityInteger::I32(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
+            ClarityInteger::I32(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
             ClarityInteger::U32(i) => Ok(i),
-            ClarityInteger::I64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::U64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::U128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
+            ClarityInteger::I64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::U64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::U128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
         }
     }
 }
@@ -359,21 +343,13 @@ impl TryInto<i64> for ClarityInteger {
             ClarityInteger::I32(i) => Ok(i.into()),
             ClarityInteger::U32(i) => Ok(i.into()),
             ClarityInteger::I64(i) => Ok(i),
-            ClarityInteger::U64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::U128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
+            ClarityInteger::U64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::U128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
         }
     }
 }
@@ -383,24 +359,16 @@ impl TryInto<u64> for ClarityInteger {
 
     fn try_into(self) -> Result<u64, Self::Error> {
         match self {
-            ClarityInteger::I32(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
+            ClarityInteger::I32(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
             ClarityInteger::U32(i) => Ok(i.into()),
-            ClarityInteger::I64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
+            ClarityInteger::I64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
             ClarityInteger::U64(i) => Ok(i),
-            ClarityInteger::I128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::U128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
+            ClarityInteger::I128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::U128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
         }
     }
 }
@@ -415,19 +383,11 @@ impl TryInto<i128> for ClarityInteger {
             ClarityInteger::I64(i) => Ok(i.into()),
             ClarityInteger::U64(i) => Ok(i.into()),
             ClarityInteger::I128(i) => Ok(i),
-            ClarityInteger::U128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
+            ClarityInteger::U128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
         }
     }
 }
@@ -437,24 +397,16 @@ impl TryInto<u128> for ClarityInteger {
 
     fn try_into(self) -> Result<u128, Self::Error> {
         match self {
-            ClarityInteger::I32(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
+            ClarityInteger::I32(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
             ClarityInteger::U32(i) => Ok(i.into()),
-            ClarityInteger::I64(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
+            ClarityInteger::I64(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
             ClarityInteger::U64(i) => Ok(i.into()),
-            ClarityInteger::I128(i) => i.try_into().map_err(|e| TryFromClarityIntError::FromInt(e)),
+            ClarityInteger::I128(i) => i.try_into().map_err(TryFromClarityIntError::FromInt),
             ClarityInteger::U128(i) => Ok(i),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigUInt(e)),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigUInt),
         }
     }
 }
@@ -470,9 +422,9 @@ impl TryInto<BigInt> for ClarityInteger {
             ClarityInteger::U64(i) => Ok(i.into()),
             ClarityInteger::I128(i) => Ok(i.into()),
             ClarityInteger::U128(i) => Ok(i.into()),
-            ClarityInteger::I256(i) => Ok(i.into()),
+            ClarityInteger::I256(i) => Ok(i),
             ClarityInteger::U256(i) => Ok(i.into()),
-            ClarityInteger::I512(i) => Ok(i.into()),
+            ClarityInteger::I512(i) => Ok(i),
             ClarityInteger::U512(i) => Ok(i.into()),
         }
     }
@@ -483,26 +435,16 @@ impl TryInto<BigUint> for ClarityInteger {
 
     fn try_into(self) -> Result<BigUint, Self::Error> {
         match self {
-            ClarityInteger::I32(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt2(e)),
+            ClarityInteger::I32(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt2),
             ClarityInteger::U32(i) => Ok(i.into()),
-            ClarityInteger::I64(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt2(e)),
+            ClarityInteger::I64(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt2),
             ClarityInteger::U64(i) => Ok(i.into()),
-            ClarityInteger::I128(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt2(e)),
+            ClarityInteger::I128(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt2),
             ClarityInteger::U128(i) => Ok(i.into()),
-            ClarityInteger::I256(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U256(i) => Ok(i.into()),
-            ClarityInteger::I512(i) => i
-                .try_into()
-                .map_err(|e| TryFromClarityIntError::FromBigInt(e)),
-            ClarityInteger::U512(i) => Ok(i.into()),
+            ClarityInteger::I256(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U256(i) => Ok(i),
+            ClarityInteger::I512(i) => i.try_into().map_err(TryFromClarityIntError::FromBigInt),
+            ClarityInteger::U512(i) => Ok(i),
         }
     }
 }

@@ -6,14 +6,17 @@ use crate::{
     ast::SExpr,
     ast::{
         ArgDef, DefaultToDef, Define, FuncDef, FuncKind, FuncSignature, Keyword, Literal, MapDef,
-        Op, Type
+        Op, Type,
     },
     lexer::Token,
+    types::{ClarityInteger, RefinedInteger},
 };
 
-// Aliases to help keep the code a little a little more sane.
+/// Aliases to help keep the code a little a little more sane.
 pub type Span = SimpleSpan<usize>;
 
+/// Helper macro for simplifying the writing of return values for parser
+/// implementation methods.
 macro_rules! returns {
     ($ty:ty) => {
         impl Parser<'a, I, $ty, extra::Err<Rich<'a, Token<'a>, Span>>> + Clone
@@ -38,10 +41,11 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 //eprintln!("ident: {ident}");
                 ident
             }
-        }.labelled("identifier")
+        }
+        .labelled("identifier")
     }
 
-    /// Parses literal tokens to expressions.
+    /// Parses literal tokens to [SExpr] expressions..
     pub fn literal() -> impl Parser<'a, I, SExpr<'a>, extra::Err<Rich<'a, Token<'a>, Span>>> + Clone
     where
         I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
@@ -49,14 +53,23 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         select! {
             Token::LiteralAsciiString(str) => SExpr::Literal(Literal::AsciiString(str)),
             Token::LiteralUtf8String(str) => SExpr::Literal(Literal::Utf8String(str)),
-            Token::LiteralInt(i) => SExpr::Literal(Literal::Int(i)),
-            Token::LiteralUInt(i) => SExpr::Literal(Literal::UInt(i)),
+            Token::LiteralInteger(i) => SExpr::Literal(Literal::Integer(i)),
             Token::LiteralPrincipal(str) => SExpr::Literal(Literal::Principal(str))
         }
         .labelled("literal")
     }
 
-    /// Parses keyword tokens to expressions.
+    /// Parses a literal integer as a [Literal].
+    fn literal_integer() -> returns!(Literal<'a>) {
+        select! { Token::LiteralInteger(i) => Literal::Integer(i) }.labelled("literal integer")
+    }
+
+    /// Parses a literal integer as a [ClarityInteger].
+    fn literal_integer_as_clarity_integer() -> returns!(ClarityInteger) {
+        select! { Token::LiteralInteger(i) => i }.labelled("literal integer")
+    }
+
+    /// Parses keyword tokens to [SExpr] expressions.
     pub fn keyword() -> returns!(SExpr<'a>) {
         select! {
             Token::BlockHeight => SExpr::Keyword(Keyword::BlockHeight),
@@ -71,7 +84,8 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             Token::True => SExpr::Keyword(Keyword::True),
             Token::TxSender => SExpr::Keyword(Keyword::TxSender),
             Token::TxSponsorOpt => SExpr::Keyword(Keyword::TxSponsor),
-        }.labelled("keyword")
+        }
+        .labelled("keyword")
     }
 
     /// Parses a single argument in the format (arg ty)
@@ -82,7 +96,8 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             .map(|(name, ty)| {
                 //println!("arg(): {name}->{ty:?}");
                 ArgDef { name, ty }
-            }).labelled("argument")
+            })
+            .labelled("argument")
     }
 
     /// Parses multiple arguments in the format `(arg1 ty1) (arg2 ty2) ...`,
@@ -107,15 +122,38 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         parser.collect::<Vec<_>>().labelled("arguments")
     }
 
-    /// Parses type definitions.
+    /// Parses type definitions into [SExpr] expressions.
     pub fn ty() -> returns!(SExpr<'a>) {
+        // Our primitives
         let simple_types = select! {
             Token::Int => SExpr::TypeDef(Type::Int),
             Token::UInt => SExpr::TypeDef(Type::UInt),
-            Token::Principal => SExpr::TypeDef(Type::Principal)
+            Token::Principal => SExpr::TypeDef(Type::Principal),
         };
 
-        simple_types
+        // ASCII string descriptors
+        let string_ascii = just(Token::AsciiString)
+            .ignore_then(Parse::literal_integer())
+            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+            .map(|x| match x {
+                Literal::Integer(ClarityInteger::U32(max_len)) => {
+                    SExpr::TypeDef(Type::StringAscii(max_len))
+                }
+                _ => todo!("failed to parse string length, must be i32"),
+            });
+
+        // Refined integer descriptors
+        let refined_int = just(Token::Int)
+            .ignore_then(Parse::literal_integer_as_clarity_integer())
+            .then(Parse::literal_integer_as_clarity_integer())
+            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+            .map(|(min, max)| SExpr::TypeDef(Type::RefinedInteger(RefinedInteger::new(min, max))));
+
+        // Assemble the final literals parser
+        refined_int
+            .or(string_ascii)
+            .or(simple_types)
+            .labelled("type")
     }
 
     /// Explicit tuple definitions: (tuple (key0 type0) (key1 type1) ...)
@@ -132,10 +170,10 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                     // Using `separated_by(just(Token::Whitespace))` doesn't work here
                     // because we've explicitly ignored whitespace in the Logos lexer.
                     .repeated()
-                    .collect()
+                    .collect(),
             )
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .labelled("tuple definition")
+            .labelled("explicit tuple descriptor")
     }
 
     /// Parses implicit tuple definitions: { key0: type0, key1: type1 }
@@ -151,7 +189,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             .allow_trailing()
             .collect()
             .delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
-            .labelled("tuple definition")
+            .labelled("implicit tuple descriptor")
     }
 
     /* /// Parses tuple definitions.
@@ -217,16 +255,12 @@ where
                 }
             });
 
-        default_to
-            .or(map_get)
-            .or(map_set)
-            .or(ok_err)
+        default_to.or(map_get).or(map_set).or(ok_err)
     })
 }
 
 /// Parser for a Clarity contract's top-level functions.
-pub fn top_level_parser<'a, I>(
-) -> returns!(Vec<SExpr<'a>>)
+pub fn top_level_parser<'a, I>() -> returns!(Vec<SExpr<'a>>)
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -306,63 +340,112 @@ where
 mod test {
     use crate::lexer::Token;
     use crate::parser::*;
-    use ariadne::{Report, ReportKind, Label, Color};
+    use ariadne::{Color, Label, Report, ReportKind};
     use chumsky::input::{SpannedInput, Stream};
     use logos::*;
 
     #[test]
+    fn string_ascii_ty() {
+        let src = "  (string-ascii 512)  ";
+
+        let result = Parse::ty().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(result, SExpr::TypeDef(Type::StringAscii(512)));
+    }
+
+    #[test]
+    fn refined_integer_ty() {
+        let src = "  (int -54321 12345)  ";
+
+        let result = Parse::ty().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(
+            result,
+            SExpr::TypeDef(Type::RefinedInteger(RefinedInteger {
+                low_val: ClarityInteger::I32(-54321),
+                high_val: ClarityInteger::U32(12345)
+            }))
+        );
+    }
+
+    #[test]
+    fn literal_integer_as_literal() {
+        let src = "  12345 ";
+
+        let result = Parse::literal_integer().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(result, Literal::Integer(ClarityInteger::U32(12345)))
+    }
+
+    #[test]
     fn literal_ascii_string() {
         let src = r#"" he l lo worl d!""#;
-        
-        let result = Parse::literal()
-            .parse(src.lex())
-            .unwrap_report(src);
 
-        assert_eq!(result, SExpr::Literal(Literal::AsciiString(" he l lo worl d!")));
+        let result = Parse::literal().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(
+            result,
+            SExpr::Literal(Literal::AsciiString(" he l lo worl d!"))
+        );
     }
 
     #[test]
     fn literal_utf8_string() {
         let src = r#"u" he l lo worl d!""#;
-        
-        let result = Parse::literal()
-            .parse(src.lex())
-            .unwrap_report(src);
 
-        assert_eq!(result, SExpr::Literal(Literal::Utf8String(" he l lo worl d!")));
+        let result = Parse::literal().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(
+            result,
+            SExpr::Literal(Literal::Utf8String(" he l lo worl d!"))
+        );
     }
 
     #[test]
     fn literal_int() {
-        let src = "  12345 ";
+        let src = "  -12345 ";
 
-        let result = Parse::literal()
-            .parse(src.lex())
-            .unwrap_report(src);
+        let result = Parse::literal().parse(src.lex()).unwrap_report(src);
 
-        assert_eq!(result, SExpr::Literal(Literal::Int(12345)));
+        assert_eq!(
+            result,
+            SExpr::Literal(Literal::Integer(ClarityInteger::I32(-12345)))
+        );
     }
 
     #[test]
     fn literal_uint() {
         let src = "  u12345 ";
 
-        let result = Parse::literal()
-            .parse(src.lex())
-            .unwrap_report(src);
+        let result = Parse::literal().parse(src.lex()).unwrap_report(src);
 
-        assert_eq!(result, SExpr::Literal(Literal::UInt(12345)));
+        assert_eq!(
+            result,
+            SExpr::Literal(Literal::Integer(ClarityInteger::U32(12345)))
+        );
+    }
+
+    #[test]
+    fn literal_principal() {
+        let src = "  'ST1J4G6RR643BCG8G8SR6M2D9Z9KXT2NJDRK3FBTK ";
+
+        let result = Parse::literal().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(
+            result,
+            SExpr::Literal(Literal::Principal(
+                "ST1J4G6RR643BCG8G8SR6M2D9Z9KXT2NJDRK3FBTK"
+            ))
+        );
     }
 
     #[test]
     fn ident_single_token() {
         let src = "hello";
-        
+
         let token_stream = src.lex();
-        let result = Parse::ident()
-            .parse(token_stream)
-            .unwrap_report(src);
-        
+        let result = Parse::ident().parse(token_stream).unwrap_report(src);
+
         //assert!(!result.has_errors());
         assert_eq!(result, src.to_string());
     }
@@ -371,9 +454,7 @@ mod test {
     fn arg_parse_unary() {
         let src = "(hello uint)";
 
-        let result = Parse::arg()
-            .parse(src.lex())
-            .unwrap_report(src);
+        let result = Parse::arg().parse(src.lex()).unwrap_report(src);
 
         assert_eq!("hello", result.name);
         assert_eq!(SExpr::TypeDef(Type::UInt), result.ty);
@@ -383,9 +464,7 @@ mod test {
     fn args_parse_binary() {
         let src = "(hello uint) (world int)";
 
-        let result = Parse::args(2, Some(2))
-            .parse(src.lex())
-            .unwrap_report(src);
+        let result = Parse::args(2, Some(2)).parse(src.lex()).unwrap_report(src);
 
         // first arg
         assert_eq!("hello", result[0].name);
@@ -399,9 +478,7 @@ mod test {
     fn args_parse_variadic() {
         let src = "(hello uint) (world int) (who principal)";
 
-        let result = Parse::args(1, None)
-            .parse(src.lex())
-            .unwrap_report(src);
+        let result = Parse::args(1, None).parse(src.lex()).unwrap_report(src);
 
         // first arg
         assert_eq!("hello", result[0].name);
@@ -449,7 +526,7 @@ mod test {
 
     #[test]
     fn tuple_implicit_def_single_entry() {
-        let src = "{ x: int }"; // parser shouldn't have name since it can't be specified in this format
+        let src = "{ x: int }";
 
         let result = Parse::tuple_def_implicit()
             .parse(src.lex())
@@ -485,11 +562,15 @@ mod test {
     // *************************************************************************
     /* #region Test Helpers */
 
+    // TIP: for VSCode users, you can use the extension `maptz.regionfolder` to
+    // collapse `#region` statements like the above to keep the helper code out
+    // of view when you don't need it.
+
     /// Alias to help keep the code a little cleaner.
     type LexedInput<'a> = SpannedInput<
-        Token<'a>, 
-        SimpleSpan, 
-        Stream<std::vec::IntoIter<(Token<'a>, chumsky::span::SimpleSpan)>>
+        Token<'a>,
+        SimpleSpan,
+        Stream<std::vec::IntoIter<(Token<'a>, chumsky::span::SimpleSpan)>>,
     >;
 
     /// Test helper trait which can take a [ParseResult] and print out a report
@@ -501,7 +582,10 @@ mod test {
     /// Implement reporting for the standard [ParseResult]. This will write to
     /// stdio so that it only shows when using `--capture-input` (i.e. not when
     /// running a test batch).
-    impl<'a, O> TestParseResult<O> for ParseResult<O, Rich<'_, Token<'a>>> where O: Clone {
+    impl<'a, O> TestParseResult<O> for ParseResult<O, Rich<'_, Token<'a>>>
+    where
+        O: Clone,
+    {
         fn unwrap_report(&self, src: &str) -> O {
             let result = self.clone().into_result();
             if let Err(errs) = result {
@@ -565,7 +649,7 @@ mod test {
             })
             .collect::<Vec<_>>();
 
-        // Define 'end of input' span for optimized usage. This basically just 
+        // Define 'end of input' span for optimized usage. This basically just
         // creates a `Range(src.len(), src.len())`.
         let src_len = src.len();
         let zero_width_span_at_end = (src_len..src_len).into();
@@ -584,13 +668,13 @@ mod test {
                     tok,
                     <std::ops::Range<usize> as Into<SimpleSpan>>::into(span),
                 ),
-                Err(err) => { 
+                Err(err) => {
                     panic!("lexing failed: {err:?}");
-                },
+                }
             })
             .collect::<Vec<_>>();
 
-        // Define 'end of input' span for optimized usage. This basically just 
+        // Define 'end of input' span for optimized usage. This basically just
         // creates a `Range(src.len(), src.len())`.
         let src_len = src.len();
         let zero_width_span_at_end = (src_len..src_len).into();
