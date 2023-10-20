@@ -131,15 +131,24 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             Token::Principal => SExpr::TypeDef(Type::Principal),
         };
 
-        // ASCII string descriptors
-        let string_ascii = just(Token::AsciiString)
-            .ignore_then(Parse::literal_integer())
+        // ASCII & UTF8 string descriptors
+        let string = 
+            just(Token::AsciiString).or(just(Token::Utf8String))
+            .then(Parse::literal_integer())
             .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|x| match x {
-                Literal::Integer(ClarityInteger::U32(max_len)) => {
-                    SExpr::TypeDef(Type::StringAscii(max_len))
+            .try_map(|(token, len), span| {
+                if let Literal::Integer(ClarityInteger::U32(max_len)) = len {
+                    if max_len == 0 {
+                        return Err(Rich::custom(span, "max-len for string-* declarations must be greater than zero."));
+                    }
+                    match token {
+                        Token::AsciiString => Ok(SExpr::TypeDef(Type::StringAscii(max_len))),
+                        Token::Utf8String => Ok(SExpr::TypeDef(Type::StringUtf8(max_len))),
+                        _ => Err(Rich::custom(span, "BUG: should not"))
+                    }
+                } else {
+                    Err(Rich::custom(span, "max-len indicator for string-* declarations must be a positive integer"))
                 }
-                _ => todo!("failed to parse string length, must be i32"),
             });
 
         // Refined integer descriptors
@@ -151,7 +160,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
 
         // Assemble the final literals parser
         refined_int
-            .or(string_ascii)
+            .or(string)
             .or(simple_types)
             .labelled("type")
     }
@@ -345,12 +354,69 @@ mod test {
     use logos::*;
 
     #[test]
+    fn string_ascii_ty_fails_on_negative_len() {
+        let src = "  (string-ascii -1)  ";
+
+        Parse::ty()
+            .parse(src.lex())
+            //.report(src)
+            .assert_failed()
+            .assert_error_count(1)
+            .assert_errors_contains("max-len indicator for string-* declarations must be a positive integer");
+    }
+
+    #[test]
+    fn string_ascii_ty_fails_on_zero_len() {
+        let src = "  (string-ascii 0)  ";
+
+        Parse::ty()
+            .parse(src.lex())
+            //.report(src)
+            .assert_failed()
+            .assert_error_count(1)
+            .assert_errors_contains("max-len for string-* declarations must be greater than zero.");
+    }
+
+    #[test]
+    fn string_utf8_ty_fails_on_negative_len() {
+        let src = "  (string-utf8 -1)  ";
+
+        Parse::ty()
+            .parse(src.lex())
+            //.report(src)
+            .assert_failed()
+            .assert_error_count(1)
+            .assert_errors_contains("max-len indicator for string-* declarations must be a positive integer");
+    }
+
+    #[test]
+    fn string_utf8_ty_fails_on_zero_len() {
+        let src = "  (string-utf8 0)  ";
+
+        Parse::ty()
+            .parse(src.lex())
+            //.report(src)
+            .assert_failed()
+            .assert_error_count(1)
+            .assert_errors_contains("max-len for string-* declarations must be greater than zero.");
+    }
+
+    #[test]
     fn string_ascii_ty() {
         let src = "  (string-ascii 512)  ";
 
         let result = Parse::ty().parse(src.lex()).unwrap_report(src);
 
         assert_eq!(result, SExpr::TypeDef(Type::StringAscii(512)));
+    }
+
+    #[test]
+    fn string_utf8_ty() {
+        let src = "  (string-utf8 512)  ";
+
+        let result = Parse::ty().parse(src.lex()).unwrap_report(src);
+
+        assert_eq!(result, SExpr::TypeDef(Type::StringUtf8(512)));
     }
 
     #[test]
@@ -575,17 +641,20 @@ mod test {
 
     /// Test helper trait which can take a [ParseResult] and print out a report
     /// to the console.
-    trait TestParseResult<O> {
-        fn unwrap_report(&self, src: &str) -> O;
+    trait TestParseResult<'a, O> {
+        fn unwrap_report(&self, src: &'a str) -> O;
+        fn report(self, src: &'a str) -> Self;
+        fn assert_failed(&'a self) -> TestParseErrorContext<'a>;
     }
 
     /// Implement reporting for the standard [ParseResult]. This will write to
     /// stdio so that it only shows when using `--capture-input` (i.e. not when
     /// running a test batch).
-    impl<'a, O> TestParseResult<O> for ParseResult<O, Rich<'_, Token<'a>>>
+    impl<'a, O> TestParseResult<'a, O> for ParseResult<O, Rich<'_, Token<'a>>>
     where
         O: Clone,
     {
+        /// If the result is an `Err` then the error report is printed to stdio
         fn unwrap_report(&self, src: &str) -> O {
             let result = self.clone().into_result();
             if let Err(errs) = result {
@@ -606,6 +675,65 @@ mod test {
             } else {
                 result.unwrap()
             }
+        }
+
+        fn report(self, src: &str) -> Self {
+            let result = self.clone().into_result();
+            if let Err(errs) = result {
+                for err in errs {
+                    Report::build(ReportKind::Error, (), err.span().start)
+                        .with_code(3)
+                        .with_message(err.to_string())
+                        .with_label(
+                            Label::new(err.span().into_range())
+                                .with_message(err.reason().to_string())
+                                .with_color(Color::Red),
+                        )
+                        .finish()
+                        .print(ariadne::Source::from(src))
+                        .unwrap();
+                }
+            }
+            self
+        }
+
+        fn assert_failed(&self) -> TestParseErrorContext<'_> {
+            let result = self.clone().into_result();
+            if let Err(errs) = result {
+                TestParseErrorContext::new(errs)
+            } else {
+                panic!("expected parsing to fail, but no errors reported.");
+            }
+        }
+    }
+
+    /// Struct which provides additional functions when in an error context.
+    struct TestParseErrorContext<'a> {
+        errors: Vec<Rich<'a, Token<'a>>>
+    }
+
+    impl<'a> TestParseErrorContext<'a> {
+        /// Construct a new [TestParseErrorContext].
+        pub fn new(errors: Vec<Rich<'a, Token<'a>>>) -> Self {
+            Self { errors }
+        }
+
+        /// Asserts that the number of errors in the error collection is exactly
+        /// the specified count.
+        pub fn assert_error_count(self, count: usize) -> Self {
+            assert_eq!(self.errors.len(), count);
+            self
+        }
+
+        /// Asserts that at least one of the errors in the error collection
+        /// contains the specified string.
+        pub fn assert_errors_contains(self, str: &str) -> Self {
+            for err in &self.errors {
+                if err.to_string().contains(str) {
+                    return self;
+                }
+            }
+            panic!("expected '{str}' in one of the error messages but it was not found.");
         }
     }
 
