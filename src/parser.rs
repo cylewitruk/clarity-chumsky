@@ -38,7 +38,6 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
     /// Parses identifier tokens to expressions.
     pub fn ident() -> returns!(&'a str) {
         select! { Token::Identifier(ident) => {
-                //eprintln!("ident: {ident}");
                 ident
             }
         }
@@ -123,46 +122,87 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
 
     /// Parses type definitions into [SExpr] expressions.
     pub fn ty() -> returns!(SExpr<'a>) {
-        // Our primitives
-        let simple_types = select! {
-            Token::Int => SExpr::TypeDef(Type::Int),
-            Token::UInt => SExpr::TypeDef(Type::UInt),
-            Token::Principal => SExpr::TypeDef(Type::Principal),
-        };
+        recursive(|ty_parser| {
+            // Our primitives
+            let simple_types = select! {
+                Token::Int => SExpr::TypeDef(Type::Int),
+                Token::UInt => SExpr::TypeDef(Type::UInt),
+                Token::Principal => SExpr::TypeDef(Type::Principal),
+            };
 
-        // ASCII & UTF8 string descriptors
-        let string = 
-            just(Token::AsciiString).or(just(Token::Utf8String))
-            .then(Parse::literal_integer())
-            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .try_map(|(token, len), span| {
-                if let Literal::Integer(ClarityInteger::U32(max_len)) = len {
-                    if max_len == 0 {
-                        return Err(Rich::custom(span, "max-len for string-* declarations must be greater than zero."));
+            // ASCII & UTF8 string descriptors
+            let string = 
+                just(Token::AsciiString).or(just(Token::Utf8String))
+                .then(Parse::literal_integer())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .try_map(|(token, len), span| {
+                    if let Literal::Integer(ClarityInteger::U32(max_len)) = len {
+                        if max_len == 0 {
+                            return Err(Rich::custom(span, "max-len for string-* declarations must be greater than zero."));
+                        }
+                        match token {
+                            Token::AsciiString => Ok(SExpr::TypeDef(Type::StringAscii(max_len))),
+                            Token::Utf8String => Ok(SExpr::TypeDef(Type::StringUtf8(max_len))),
+                            // This should not be reachable since we're filtering on string-ascii & string-utf8 above.
+                            _ => Err(Rich::custom(span, "invalid type for string definition; should not reach this point."))
+                        }
+                    } else {
+                        Err(Rich::custom(span, "max-len indicator for string-* declarations must be a positive integer"))
                     }
-                    match token {
-                        Token::AsciiString => Ok(SExpr::TypeDef(Type::StringAscii(max_len))),
-                        Token::Utf8String => Ok(SExpr::TypeDef(Type::StringUtf8(max_len))),
-                        // This should not be reachable since we're filtering on string-ascii & string-utf8 above.
-                        _ => Err(Rich::custom(span, "invalid type for string definition; should not reach this point."))
+                });
+
+            // Buffer (`buff`) descriptors
+            let buff = 
+                just(Token::Buffer)
+                .ignore_then(Parse::literal_integer())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .try_map(|len, span| {
+                    if let Literal::Integer(ClarityInteger::U32(max_len)) = len {
+                        if max_len == 0 {
+                            return Err(Rich::custom(span, "max-len for buff declarations must be greater than zero."));
+                        }
+                        Ok(SExpr::TypeDef(Type::Buffer(max_len)))
+                    } else {
+                        Err(Rich::custom(span, "max-len indicator for buff declarations must be a positive integer"))
                     }
-                } else {
-                    Err(Rich::custom(span, "max-len indicator for string-* declarations must be a positive integer"))
-                }
-            });
+                });
 
-        // Refined integer descriptors
-        let refined_int = just(Token::Int)
-            .ignore_then(Parse::literal_integer_as_clarity_integer())
-            .then(Parse::literal_integer_as_clarity_integer())
-            .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-            .map(|(min, max)| SExpr::TypeDef(Type::RefinedInteger(RefinedInteger::new(min, max))));
+            // Refined integer descriptors
+            let refined_int = just(Token::Int)
+                .ignore_then(Parse::literal_integer_as_clarity_integer())
+                .then(Parse::literal_integer_as_clarity_integer())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|(min, max)| SExpr::TypeDef(Type::RefinedInteger(RefinedInteger::new(min, max))));
 
-        // Assemble the final literals parser
-        refined_int
-            .or(string)
-            .or(simple_types)
-            .labelled("type")
+            let list = 
+                just(Token::OpList)
+                .ignore_then(
+                    Parse::literal_integer_as_clarity_integer()
+                    .try_map(|len, span| {
+                        if let ClarityInteger::U32(_) = len {
+                            Ok(len)
+                        } else { 
+                            Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
+                        }
+                    })
+                ).then(ty_parser.clone())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .try_map(|(max_len, ty), span| {
+                    if let ClarityInteger::U32(max_len) = max_len {
+                        Ok(SExpr::TypeDef(Type::List(max_len, Box::new(ty))))
+                    } else {
+                        Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
+                    }
+                });
+
+            // Assemble the final literals parser
+            refined_int
+                .or(list)
+                .or(simple_types)
+                .or(buff)
+                .or(string)
+                .labelled("type")
+        })
     }
 
     /// Explicit tuple definitions: (tuple (key0 type0) (key1 type1) ...)
@@ -195,19 +235,13 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             .labelled("implicit tuple descriptor")
     }
 
-    /* /// Parses tuple definitions.
-    pub fn tuple() -> impl Parser<'a, I, SExpr, extra::Err<Rich<'a, Token, Span>>> + Clone {
-        Self::tuple_def_explicit()
-            .or(Self::tuple_implicit())
-    }*/
-
     /// Parser for expressions
     fn expr() -> returns!(SExpr<'a>)
     where
         I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
     {
         recursive(|expr| {
-            let list = 
+            /*let list = 
                 just(Token::OpList)
                 .ignore_then(
                     Parse::literal_integer_as_clarity_integer()
@@ -226,7 +260,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                     } else {
                         Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
                     }
-                });
+                });*/
 
             // default-to: (default-to default-value option-value)
             let default_to = just(Token::OpDefaultTo)
@@ -256,7 +290,10 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
                 .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-                .map(|((map, key), value)| SExpr::Op(Op::MapSet)); // TODO: impl mapdef
+                .map(|((map, key), value)| {
+                    // TODO: impl mapdef
+                    SExpr::Op(Op::MapSet)
+                }); 
 
             // ok: (ok value)
             // err: (err value)
@@ -277,7 +314,7 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             default_to
                 .or(map_get)
                 .or(map_set)
-                .or(list)
+                //.or(list)
                 .or(ok_err)
         })
     }
@@ -363,7 +400,7 @@ mod test {
     fn list_sunny_day() {
         let src = "(list 1 int)";
 
-        let result = Parse::expr()
+        let result = Parse::ty()
             .parse(src.lex())
             .unwrap_report(src);
 
@@ -374,11 +411,21 @@ mod test {
     fn list_fails_with_negative_len() {
         let src = "(list -1 int)";
 
-        Parse::expr()
+        Parse::ty()
             .parse(src.lex())
+            .report(src)
             .assert_failed()
             .assert_error_count(1)
             .assert_errors_contains("max-len indicator for list declarations must be greater than zero.");
+    }
+
+    #[test]
+    fn list_nested() {
+        let src = "(list 1 (list 2 (list 3 int)))";
+
+        Parse::ty()
+            .parse(src.lex())
+            .unwrap_report(src);
     }
 
     #[test]

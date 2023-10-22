@@ -96,6 +96,8 @@ pub enum Token<'a> {
     Utf8String,
     #[token("principal")]
     Principal,
+    #[token("buff")]
+    Buffer,
 
     // Keywords
     #[token("block-height")]
@@ -525,6 +527,7 @@ impl fmt::Display for Token<'_> {
             Token::LiteralAsciiString(str) => write!(f, "<ascii> \"{str}\""),
             Token::LiteralUtf8String(str) => write!(f, "<utf8> \"{str}\""),
             Token::LiteralPrincipal(str) => write!(f, "<principal: \"{str}\""),
+            Token::Buffer => write!(f, "<buff>"),
         }
     }
 }

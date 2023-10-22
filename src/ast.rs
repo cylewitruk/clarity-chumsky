@@ -75,7 +75,7 @@ pub enum Type<'a> {
     UInt,
     Bool,
     Principal,
-    Buff,
+    Buffer(u32),
     StringAscii(u32),
     StringUtf8(u32),
     List(u32, Box<SExpr<'a>>),
