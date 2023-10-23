@@ -6,10 +6,10 @@ use crate::{
     ast::SExpr,
     ast::{
         ArgDef, DefaultToDef, Define, FuncDef, FuncKind, FuncSignature, Keyword, Literal, MapDef,
-        Op, Type,
+        Op, Type, Integer
     },
     lexer::Token,
-    types::{ClarityInteger, RefinedInteger},
+    types::RefinedInteger,
 };
 
 /// Aliases to help keep the code a little a little more sane.
@@ -53,7 +53,9 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             Token::LiteralAsciiString(str) => SExpr::Literal(Literal::AsciiString(str)),
             Token::LiteralUtf8String(str) => SExpr::Literal(Literal::Utf8String(str)),
             Token::LiteralInteger(i) => SExpr::Literal(Literal::Integer(i)),
-            Token::LiteralPrincipal(str) => SExpr::Literal(Literal::Principal(str))
+            Token::LiteralPrincipal(str) => SExpr::Literal(Literal::Principal(str)),
+            Token::True => SExpr::Literal(Literal::Bool(true)),
+            Token::False => SExpr::Literal(Literal::Bool(false)),
         }
         .labelled("literal")
     }
@@ -63,8 +65,8 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         select! { Token::LiteralInteger(i) => Literal::Integer(i) }.labelled("literal integer")
     }
 
-    /// Parses a literal integer as a [ClarityInteger].
-    fn literal_integer_as_clarity_integer() -> returns!(ClarityInteger) {
+    /// Parses a literal integer as a [Integer].
+    fn literal_integer_as_clarity_integer() -> returns!(Integer) {
         select! { Token::LiteralInteger(i) => i }.labelled("literal integer")
     }
 
@@ -120,14 +122,25 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         parser.collect::<Vec<_>>().labelled("arguments")
     }
 
-    /// Parses type definitions into [SExpr] expressions.
-    pub fn ty() -> returns!(SExpr<'a>) {
+    /// Parses a type definition into a [SExpr].
+    pub fn type_def() -> returns!(SExpr<'a>) {
+        Self::ty()
+            .map(|ty| {
+                SExpr::TypeDef(ty)
+            })
+    }
+
+    /// Parses type definitions into a [Type] variant. 
+    /// 
+    /// To parse the [Type] as a [SExpr], use the `type_def` function instead.
+    pub fn ty() -> returns!(Type) {
         recursive(|ty_parser| {
             // Our primitives
             let simple_types = select! {
-                Token::Int => SExpr::TypeDef(Type::Int),
-                Token::UInt => SExpr::TypeDef(Type::UInt),
-                Token::Principal => SExpr::TypeDef(Type::Principal),
+                Token::Int => Type::Int,
+                Token::UInt => Type::UInt,
+                Token::Principal => Type::Principal,
+                Token::Bool => Type::Bool
             };
 
             // ASCII & UTF8 string descriptors
@@ -136,13 +149,13 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 .then(Parse::literal_integer())
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
                 .try_map(|(token, len), span| {
-                    if let Literal::Integer(ClarityInteger::U32(max_len)) = len {
+                    if let Literal::Integer(Integer::U32(max_len)) = len {
                         if max_len == 0 {
                             return Err(Rich::custom(span, "max-len for string-* declarations must be greater than zero."));
                         }
                         match token {
-                            Token::AsciiString => Ok(SExpr::TypeDef(Type::StringAscii(max_len))),
-                            Token::Utf8String => Ok(SExpr::TypeDef(Type::StringUtf8(max_len))),
+                            Token::AsciiString => Ok(Type::StringAscii(max_len)),
+                            Token::Utf8String => Ok(Type::StringUtf8(max_len)),
                             // This should not be reachable since we're filtering on string-ascii & string-utf8 above.
                             _ => Err(Rich::custom(span, "invalid type for string definition; should not reach this point."))
                         }
@@ -157,29 +170,34 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 .ignore_then(Parse::literal_integer())
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
                 .try_map(|len, span| {
-                    if let Literal::Integer(ClarityInteger::U32(max_len)) = len {
+                    if let Literal::Integer(Integer::U32(max_len)) = len {
                         if max_len == 0 {
                             return Err(Rich::custom(span, "max-len for buff declarations must be greater than zero."));
                         }
-                        Ok(SExpr::TypeDef(Type::Buffer(max_len)))
+                        Ok(Type::Buffer(max_len))
                     } else {
                         Err(Rich::custom(span, "max-len indicator for buff declarations must be a positive integer"))
                     }
                 });
 
-            // Refined integer descriptors
+            // Refined integer descriptors in the format `(int min max)`.
             let refined_int = just(Token::Int)
                 .ignore_then(Parse::literal_integer_as_clarity_integer())
                 .then(Parse::literal_integer_as_clarity_integer())
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-                .map(|(min, max)| SExpr::TypeDef(Type::RefinedInteger(RefinedInteger::new(min, max))));
+                .map(|(min, max)| Type::RefinedInteger(RefinedInteger::new(min, max)));
 
+            // List definitions in the format `(list max-len entry-type)`.
+            // 
+            // Note that when parsing the entry type, we must use the _recursive_
+            // parser from the `recursive` function above (`ty_parser`), otherwise we will overflow
+            // the stack.
             let list = 
                 just(Token::OpList)
                 .ignore_then(
                     Parse::literal_integer_as_clarity_integer()
                     .try_map(|len, span| {
-                        if let ClarityInteger::U32(_) = len {
+                        if let Integer::U32(_) = len {
                             Ok(len)
                         } else { 
                             Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
@@ -188,19 +206,40 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 ).then(ty_parser.clone())
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
                 .try_map(|(max_len, ty), span| {
-                    if let ClarityInteger::U32(max_len) = max_len {
-                        Ok(SExpr::TypeDef(Type::List(max_len, Box::new(ty))))
+                    if let Integer::U32(max_len) = max_len {
+                        Ok(Type::List { max_len, ty: Box::new(ty) })
                     } else {
                         Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
                     }
                 });
 
+            // Parses optional types in the format `(optional some-type)`.
+            let optional =
+                just(Token::Optional)
+                .ignore_then(ty_parser.clone())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|ty| {
+                    Type::Optional(Box::new(ty))
+                });
+
+            // Parses response types in the format `(response ok-type err-type)`.
+            let response =
+                just(Token::Response)
+                .ignore_then(ty_parser.clone())
+                .then(ty_parser.clone())
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .map(|(ok_ty, err_ty)| {
+                    Type::Response { ok_ty: Box::new(ok_ty), err_ty: Box::new(err_ty) }
+                });
+
             // Assemble the final literals parser
             refined_int
                 .or(list)
-                .or(simple_types)
                 .or(buff)
                 .or(string)
+                .or(optional)
+                .or(response)
+                .or(simple_types)
                 .labelled("type")
         })
     }
@@ -241,37 +280,16 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
         I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
     {
         recursive(|expr| {
-            /*let list = 
-                just(Token::OpList)
-                .ignore_then(
-                    Parse::literal_integer_as_clarity_integer()
-                    .try_map(|len, span| {
-                        if let ClarityInteger::U32(_) = len {
-                            Ok(len)
-                        } else { 
-                            Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
-                        }
-                    })
-                ).then(Parse::ty())
-                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-                .try_map(|(max_len, ty), span| {
-                    if let ClarityInteger::U32(max_len) = max_len {
-                        Ok(SExpr::TypeDef(Type::List(max_len, Box::new(ty))))
-                    } else {
-                        Err(Rich::custom(span, "max-len indicator for list declarations must be greater than zero."))
-                    }
-                });*/
-
             // default-to: (default-to default-value option-value)
             let default_to = just(Token::OpDefaultTo)
                 .ignore_then(Parse::literal())
                 .then(expr.clone())
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
                 .map(|(default, tail)| {
-                    SExpr::Op(Op::DefaultTo(DefaultToDef {
+                    Op::DefaultTo(DefaultToDef {
                         default: Box::new(default),
                         tail: Box::new(tail),
-                    }))
+                    }).into()
                 });
 
             // map-get: (map-get? map-name key-tuple)
@@ -291,8 +309,11 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
                 .then(Parse::literal().or(Parse::keyword().or(expr.clone())))
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
                 .map(|((map, key), value)| {
-                    // TODO: impl mapdef
-                    SExpr::Op(Op::MapSet)
+                    Op::MapSet {
+                        name: map, 
+                        key: Box::new(key), 
+                        value: Box::new(value) 
+                    }.into()
                 }); 
 
             // ok: (ok value)
@@ -300,22 +321,49 @@ impl<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> Parse<'a, I, S
             let ok_err = one_of([Token::OpOk, Token::OpErr])
                 .then(expr.clone())
                 .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
-                .map(|(token, tail)| {
+                .try_map(|(token, tail), span| {
                     let tail = Box::new(tail);
                     match token {
-                        Token::OpOk => SExpr::Op(Op::Ok(tail)),
-                        Token::OpErr => SExpr::Op(Op::Err(tail)),
-                        _ => unimplemented!(
-                            "bug: token '{token:?}' is not supported by this matching pattern."
-                        ),
+                        Token::OpOk => Ok(Op::Ok(tail).into()),
+                        Token::OpErr => Ok(Op::Err(tail).into()),
+                        _ => Err(Rich::custom(span, "bug: token '{token:?}' is not supported by this matching pattern."))
                     }
                 });
 
-            default_to
+            // Helper parser for this expression tree which recursively parses
+            // variadic argument expressions.
+            let variadic_args_parser = 
+                expr.clone()
+                .repeated()
+                .at_least(2)
+                .collect::<Vec<_>>();
+
+            // Parses our variadic arithmetic operators.
+            let arithmetic = 
+                one_of([Token::OpMul, Token::OpAdd, Token::OpSub, Token::OpDiv])
+                .then(variadic_args_parser)
+                .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
+                .try_map(|(token, tail), _span| {
+                    let op = match token {
+                        Token::OpMul => Op::Mul(tail),
+                        Token::OpAdd => Op::Add(tail),
+                        Token::OpSub => Op::Sub(tail),
+                        Token::OpDiv => Op::Div(tail),
+                        _ => unimplemented!(
+                            "bug: token '{token:?}' is not supported by this matching pattern."
+                        ),
+                    };
+
+                    Ok(op.into())
+                });
+                
+            arithmetic
+                .or(default_to)
                 .or(map_get)
                 .or(map_set)
-                //.or(list)
                 .or(ok_err)
+                // If nothing matches then we fall-back to a literal.
+                .or(Parse::literal())
         })
     }
 }
@@ -379,8 +427,8 @@ where
         .map(|((name, key_ty), val_ty)| {
             SExpr::Define(Define::Map(MapDef {
                 name,
-                key_ty: Box::new(key_ty),
-                val_ty: Box::new(val_ty),
+                key_ty,
+                val_ty,
             }))
         })
         .labelled("map definition");
@@ -397,18 +445,145 @@ mod test {
     use logos::*;
 
     #[test]
-    fn list_sunny_day() {
+    fn add_fails_with_one_argument() {
+        let src = "(+ 5)";
+
+        Parse::expr()
+            .parse(src.lex())
+            .assert_failed();
+    }
+
+    #[test]
+    fn add_with_two_arguments() {
+        let src = "(+ 1 2)";
+
+        let result = Parse::expr()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(
+            result,
+            SExpr::Op(Op::Add(
+                vec![
+                    SExpr::Literal(Literal::Integer(Integer::U32(1))),
+                    SExpr::Literal(Literal::Integer(Integer::U32(2)))
+                ]
+            ))
+        )
+    }
+
+    #[test]
+    fn add_with_three_arguments() {
+        let src = "(+ 1 2 3)";
+
+        let result = Parse::expr()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(
+            result,
+            Op::Add(
+                vec![
+                    Integer::U32(1).into(),
+                    Integer::U32(2).into(),
+                    Integer::U32(3).into()
+                ]
+            ).into()
+        )
+    }
+
+    #[test]
+    fn add_with_expr_argument() {
+        let src = "(+ 1 2 (+ 3 4))";
+
+        let result = Parse::expr()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(
+            result,
+            Op::Add(
+                vec![
+                    Integer::U32(1).into(),
+                    Integer::U32(2).into(),
+                    Op::Add(
+                        vec![
+                            Integer::U32(3).into(),
+                            Integer::U32(4).into()
+                        ]
+                    ).into()
+                ]
+            ).into()
+        )
+    }
+
+    #[test]
+    fn response_simple_ty() {
+        let src = "(response int uint)";
+        
+        let result = Parse::ty()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(Type::Response { 
+            ok_ty: Box::new(Type::Int), 
+            err_ty: Box::new(Type::UInt)
+        }, result);
+    }
+
+    #[test]
+    fn response_complex_ty() {
+        let src = "(response (list 1 int) (optional uint))";
+
+        let result = Parse::ty()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(Type::Response {
+            ok_ty: Box::new(Type::List { max_len: 1, ty: Box::new(Type::Int)}),
+            err_ty: Box::new(Type::Optional(Box::new(Type::UInt)))
+        }, result);
+    }
+
+    #[test]
+    fn optional_simple_ty() {
+        let src = "(optional int)";
+
+        let result = Parse::ty()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(Type::Optional(Box::new(Type::Int)), result);
+    }
+
+    #[test]
+    fn optional_complex_ty() {
+        let src = " (optional (list 1 (list 1 int)))";
+
+        let result = Parse::ty()
+            .parse(src.lex())
+            .unwrap_report(src);
+
+        assert_eq!(
+            Type::Optional(Box::new(
+                Type::List { max_len: 1, ty: Box::new(
+                    Type::List { max_len: 1, ty: Box::new(Type::Int)})})), 
+            result);
+    }
+
+    #[test]
+    fn list_def_sunny_day() {
         let src = "(list 1 int)";
 
         let result = Parse::ty()
             .parse(src.lex())
             .unwrap_report(src);
 
-        assert_eq!(result, SExpr::TypeDef(Type::List(1, Box::new(SExpr::TypeDef(Type::Int)))));
+        assert_eq!(Type::List { max_len: 1, ty: Box::new(Type::Int) }, result);
     }
 
     #[test]
-    fn list_fails_with_negative_len() {
+    fn list_def_fails_with_negative_len() {
         let src = "(list -1 int)";
 
         Parse::ty()
@@ -420,7 +595,7 @@ mod test {
     }
 
     #[test]
-    fn list_nested() {
+    fn list_def_nested() {
         let src = "(list 1 (list 2 (list 3 int)))";
 
         Parse::ty()
@@ -434,7 +609,7 @@ mod test {
 
         Parse::ty()
             .parse(src.lex())
-            //.report(src)
+            .report(src)
             .assert_failed()
             .assert_error_count(1)
             .assert_errors_contains("max-len indicator for string-* declarations must be a positive integer");
@@ -482,7 +657,7 @@ mod test {
 
         let result = Parse::ty().parse(src.lex()).unwrap_report(src);
 
-        assert_eq!(result, SExpr::TypeDef(Type::StringAscii(512)));
+        assert_eq!(result, Type::StringAscii(512));
     }
 
     #[test]
@@ -491,7 +666,7 @@ mod test {
 
         let result = Parse::ty().parse(src.lex()).unwrap_report(src);
 
-        assert_eq!(result, SExpr::TypeDef(Type::StringUtf8(512)));
+        assert_eq!(result, Type::StringUtf8(512));
     }
 
     #[test]
@@ -502,10 +677,10 @@ mod test {
 
         assert_eq!(
             result,
-            SExpr::TypeDef(Type::RefinedInteger(RefinedInteger {
-                low_val: ClarityInteger::I32(-54321),
-                high_val: ClarityInteger::U32(12345)
-            }))
+            Type::RefinedInteger(RefinedInteger {
+                low_val: Integer::I32(-54321),
+                high_val: Integer::U32(12345)
+            })
         );
     }
 
@@ -515,7 +690,7 @@ mod test {
 
         let result = Parse::literal_integer().parse(src.lex()).unwrap_report(src);
 
-        assert_eq!(result, Literal::Integer(ClarityInteger::U32(12345)))
+        assert_eq!(result, Literal::Integer(Integer::U32(12345)))
     }
 
     #[test]
@@ -550,7 +725,7 @@ mod test {
 
         assert_eq!(
             result,
-            SExpr::Literal(Literal::Integer(ClarityInteger::I32(-12345)))
+            SExpr::Literal(Literal::Integer(Integer::I32(-12345)))
         );
     }
 
@@ -562,7 +737,7 @@ mod test {
 
         assert_eq!(
             result,
-            SExpr::Literal(Literal::Integer(ClarityInteger::U32(12345)))
+            SExpr::Literal(Literal::Integer(Integer::U32(12345)))
         );
     }
 
@@ -598,7 +773,7 @@ mod test {
         let result = Parse::arg().parse(src.lex()).unwrap_report(src);
 
         assert_eq!("hello", result.name);
-        assert_eq!(SExpr::TypeDef(Type::UInt), result.ty);
+        assert_eq!(Type::UInt, result.ty);
     }
 
     #[test]
@@ -609,10 +784,10 @@ mod test {
 
         // first arg
         assert_eq!("hello", result[0].name);
-        assert_eq!(SExpr::TypeDef(Type::UInt), result[0].ty);
+        assert_eq!(Type::UInt, result[0].ty);
         // second arg
         assert_eq!("world", result[1].name);
-        assert_eq!(SExpr::TypeDef(Type::Int), result[1].ty);
+        assert_eq!(Type::Int, result[1].ty);
     }
 
     #[test]
@@ -623,13 +798,13 @@ mod test {
 
         // first arg
         assert_eq!("hello", result[0].name);
-        assert_eq!(SExpr::TypeDef(Type::UInt), result[0].ty);
+        assert_eq!(Type::UInt, result[0].ty);
         // second arg
         assert_eq!("world", result[1].name);
-        assert_eq!(SExpr::TypeDef(Type::Int), result[1].ty);
+        assert_eq!(Type::Int, result[1].ty);
         // third arg
         assert_eq!("who", result[2].name);
-        assert_eq!(SExpr::TypeDef(Type::Principal), result[2].ty);
+        assert_eq!(Type::Principal, result[2].ty);
     }
 
     #[test]
@@ -642,7 +817,7 @@ mod test {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "x");
-        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+        assert_eq!(result[0].ty, Type::Int);
     }
 
     #[test]
@@ -656,13 +831,13 @@ mod test {
         assert_eq!(result.len(), 3);
         // first entry
         assert_eq!(result[0].name, "x");
-        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+        assert_eq!(result[0].ty, Type::Int);
         // second entry
         assert_eq!(result[1].name, "y");
-        assert_eq!(result[1].ty, SExpr::TypeDef(Type::UInt));
+        assert_eq!(result[1].ty, Type::UInt);
         // third entry
         assert_eq!(result[2].name, "z");
-        assert_eq!(result[2].ty, SExpr::TypeDef(Type::Principal));
+        assert_eq!(result[2].ty, Type::Principal);
     }
 
     #[test]
@@ -675,7 +850,7 @@ mod test {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "x");
-        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+        assert_eq!(result[0].ty, Type::Int);
     }
 
     #[test]
@@ -689,13 +864,13 @@ mod test {
         assert_eq!(result.len(), 3);
         // first entry
         assert_eq!(result[0].name, "x");
-        assert_eq!(result[0].ty, SExpr::TypeDef(Type::Int));
+        assert_eq!(result[0].ty, Type::Int);
         // second entry
         assert_eq!(result[1].name, "y");
-        assert_eq!(result[1].ty, SExpr::TypeDef(Type::UInt));
+        assert_eq!(result[1].ty, Type::UInt);
         // third entry
         assert_eq!(result[2].name, "z");
-        assert_eq!(result[2].ty, SExpr::TypeDef(Type::Principal));
+        assert_eq!(result[2].ty, Type::Principal);
     }
 
     // *************************************************************************

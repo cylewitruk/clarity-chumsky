@@ -3,12 +3,11 @@ use std::num::ParseIntError;
 use thiserror::Error;
 
 use crate::{
-    ast::Op,
     types::{ClarityType, TryIntoClarityIntError},
 };
 
 #[derive(Error, Default, Debug, Clone, PartialEq)]
-pub enum ClarityError<'a> {
+pub enum ClarityError {
     #[default]
     #[error("an unexpected error has occurred and no additionl information is available")]
     Undefined,
@@ -28,10 +27,10 @@ pub enum ClarityError<'a> {
     )]
     ParseStringDefinition,
 
-    #[error("arithmetic overflow occurred during execution of `{op:?}`")]
-    ArithmeticOverflow { op: Op<'a> },
-    #[error("arithmetic underflow occurred during execution of `{op:?}`")]
-    ArithmeticUnderflow { op: Op<'a> },
+    #[error("arithmetic overflow occurred during evaluation.")]
+    ArithmeticOverflow,
+    #[error("arithmetic underflow occurred during evaluation.")]
+    ArithmeticUnderflow,
 
     #[error("an error occurred while attempting to parse an integer: {inner:?}")]
     ParseInt { inner: ParseIntError },

@@ -2,7 +2,7 @@ use std::fmt;
 
 use logos::{Lexer, Logos};
 
-use crate::{errors::ClarityError, types::ClarityInteger};
+use crate::{errors::ClarityError, ast::Integer};
 
 /// Removes surrounding quotes from an ASCII string literal token.
 fn literal_ascii_string<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
@@ -21,7 +21,7 @@ fn literal_principal<'a>(lex: &mut Lexer<'a, Token<'a>>) -> &'a str {
 }
 
 /// Parses a numeric literal into an `i128`.
-fn literal_integer<'a>(lex: &mut Lexer<'a, Token<'a>>) -> ClarityInteger {
+fn literal_integer<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Integer {
     let mut str = lex.slice();
 
     // Determine what kind of integer literal we've got. We will always use
@@ -36,7 +36,7 @@ fn literal_integer<'a>(lex: &mut Lexer<'a, Token<'a>>) -> ClarityInteger {
 
 /// Enum of all tokens in the Clarity language.
 #[derive(Logos, Clone, Debug, PartialEq)]
-#[logos(error = ClarityError<'s>)]
+#[logos(error = ClarityError)]
 pub enum Token<'a> {
     Error,
 
@@ -59,7 +59,7 @@ pub enum Token<'a> {
 
     // Literals
     #[regex("[u-]?[0-9]+", priority = 2, callback = literal_integer)]
-    LiteralInteger(ClarityInteger),
+    LiteralInteger(Integer),
     #[regex("0b[01]+")]
     LiteralBinary,
     #[regex("0x[0-9a-fA-F]+")]
@@ -98,6 +98,12 @@ pub enum Token<'a> {
     Principal,
     #[token("buff")]
     Buffer,
+    #[token("bool")]
+    Bool,
+    #[token("optional")]
+    Optional,
+    #[token("response")]
+    Response,
 
     // Keywords
     #[token("block-height")]
@@ -528,6 +534,9 @@ impl fmt::Display for Token<'_> {
             Token::LiteralUtf8String(str) => write!(f, "<utf8> \"{str}\""),
             Token::LiteralPrincipal(str) => write!(f, "<principal: \"{str}\""),
             Token::Buffer => write!(f, "<buff>"),
+            Token::Bool => write!(f, "<bool>"),
+            Token::Optional => write!(f, "<optional>"),
+            Token::Response => write!(f, "<response>"),
         }
     }
 }
